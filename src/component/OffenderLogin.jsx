@@ -37,17 +37,28 @@ function OffenderLogin() {
 
       localStorage.setItem("access_token", response.data.access);
       localStorage.setItem("refresh_token", response.data.refresh);
-      
+
       console.log("✅ Login successful!");
-      console.log("   - access_token saved:", response.data.access.substring(0, 30) + "...");
-      console.log("   - refresh_token saved:", response.data.refresh.substring(0, 30) + "...");
-      console.log("   - localStorage keys after login:", Object.keys(localStorage));
+      console.log(
+        "   - access_token saved:",
+        response.data.access.substring(0, 30) + "...",
+      );
+      console.log(
+        "   - refresh_token saved:",
+        response.data.refresh.substring(0, 30) + "...",
+      );
+      console.log(
+        "   - localStorage keys after login:",
+        Object.keys(localStorage),
+      );
 
       // Check if there's a pending Paystack reference from a previous failed verify
       // (stored by OffenderDashboard when session expired during verify)
       const pendingRef = sessionStorage.getItem("pendingPaystackRef");
       if (pendingRef) {
-        console.log("Pending Paystack reference found. Will retry verify after dashboard loads.");
+        console.log(
+          "Pending Paystack reference found. Will retry verify after dashboard loads.",
+        );
       }
 
       navigate("/offender-dashboard");

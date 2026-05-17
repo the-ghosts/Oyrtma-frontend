@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import oyrtmaLogo from "../assets/OYRTMA.png";
 import AddVehicle from "./AddVehicle";
-import { usePaystackPayment } from "react-paystack";
+import { PaystackButton } from "react-paystack";
 
 function OffenderDashboard() {
   const navigate = useNavigate();
@@ -19,15 +19,6 @@ function OffenderDashboard() {
 
   const brandGreen = "#007A33";
   const brandRed = "#DA291C";
-
-  const [config, setConfig] = useState({
-    reference: new String(Math.random() * 100000000).toString(),
-    email: "test@test.com",
-    amount: 0,
-    publicKey: "",
-  });
-
-  const initializePayment = usePaystackPayment(config);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -50,7 +41,7 @@ function OffenderDashboard() {
       }
       const res = await axios.get(
         "http://127.0.0.1:8000/api/payments/config/",
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       setPaystackPublicKey(res.data.publicKey);
       setConfig((prev) => ({ ...prev, publicKey: res.data.publicKey }));
@@ -97,7 +88,10 @@ function OffenderDashboard() {
   };
 
   const manualVerifyPayment = async (ref, ticket) => {
-    console.log("🔐 Starting manual verify with:", { ref, ticket_id: ticket?.id });
+    console.log("🔐 Starting manual verify with:", {
+      ref,
+      ticket_id: ticket?.id,
+    });
     if (!ref || !ticket) {
       console.log("⚠️ Missing ref or ticket");
       return false;
@@ -111,7 +105,7 @@ function OffenderDashboard() {
       const verifyRes = await axios.post(
         endpoint,
         { reference: ref },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       console.log("✅ Verify succeeded:", verifyRes.data);
       await fetchMyTickets();
@@ -122,7 +116,9 @@ function OffenderDashboard() {
       console.error("❌ Verify failed:", error.message);
       console.error("   Backend response:", error.response?.data);
       if (error.response?.status !== 401) {
-        alert(`Verification failed: ${error.response?.data?.detail || error.message}`);
+        alert(
+          `Verification failed: ${error.response?.data?.detail || error.message}`,
+        );
       }
       return false;
     } finally {
@@ -132,34 +128,30 @@ function OffenderDashboard() {
 
   const handlePaystackSuccess = async (reference) => {
     console.log("🎉 Success callback fired with reference:", reference);
-    // Don't set processing here - let the verify handle it
-    if (ticketToPay && lastPaymentRef) {
-      console.log("   ✅ We have ticket and reference, auto-verifying...");
-      await manualVerifyPayment(lastPaymentRef, ticketToPay);
+    const refStr = reference.reference || reference;
+
+    // 1. Close our custom confirmation modal ONLY AFTER payment succeeds
+    setIsPaymentModalOpen(false);
+
+    // 2. Verify with Django
+    if (ticketToPay) {
+      console.log("✅ Auto-verifying with Django...");
+      await manualVerifyPayment(refStr, ticketToPay);
     } else {
-      console.log("   ⚠️ Missing context:", { ticketToPay: !!ticketToPay, lastPaymentRef: !!lastPaymentRef });
+      console.log("⚠️ Missing ticket context");
     }
   };
 
   const handlePaystackClose = () => {
-    console.log("🔴 Paystack modal closed");
-    console.log("   - Current state:", { lastPaymentRef, ticketToPay: !!ticketToPay, isProcessingPayment });
+    console.log("🔴 Paystack payment window closed by user");
+    // Close our custom modal if they cancel the payment
     setIsPaymentModalOpen(false);
-    
-    // If we have a reference and ticket, auto-verify
-    if (lastPaymentRef && ticketToPay) {
-      console.log("🔄 Auto-verifying on close with ref:", lastPaymentRef);
-      // Use setTimeout to let state update
-      setTimeout(() => {
-        manualVerifyPayment(lastPaymentRef, ticketToPay);
-      }, 300);
-    } else {
-      console.log("⚠️ Cannot auto-verify - missing ref or ticket");
-    }
   };
-
   const openPaymentModal = (ticket) => {
+    // Generate the reference immediately
+    const newRef = `OYRTMA-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     setTicketToPay(ticket);
+    setLastPaymentRef(newRef);
     setIsPaymentModalOpen(true);
   };
 
@@ -194,51 +186,186 @@ function OffenderDashboard() {
   );
 
   return (
-    <div style={{ padding: "20px", fontFamily: "Arial, sans-serif", backgroundColor: "#f4f4f9", minHeight: "100vh" }}>
+    <div
+      style={{
+        padding: "20px",
+        fontFamily: "Arial, sans-serif",
+        backgroundColor: "#f4f4f9",
+        minHeight: "100vh",
+      }}
+    >
       {lastPaymentRef && (
-        <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", background: "#0b6e4f", color: "white", padding: "8px 14px", borderRadius: 6, zIndex: 2000 }}>
+        <div
+          style={{
+            position: "fixed",
+            top: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#0b6e4f",
+            color: "white",
+            padding: "8px 14px",
+            borderRadius: 6,
+            zIndex: 2000,
+          }}
+        >
           Payment reference: <strong>{lastPaymentRef}</strong>
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "white", padding: "15px 30px", borderRadius: "10px", boxShadow: "0 2px 5px rgba(0,0,0,0.1)", marginBottom: "20px" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          backgroundColor: "white",
+          padding: "15px 30px",
+          borderRadius: "10px",
+          boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+          marginBottom: "20px",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
           <img src={oyrtmaLogo} alt="OYRTMA Logo" style={{ width: "60px" }} />
-          <h2 style={{ color: "#333", margin: 0 }}>Driver Self-Service Portal</h2>
+          <h2 style={{ color: "#333", margin: 0 }}>
+            Driver Self-Service Portal
+          </h2>
         </div>
-        <button onClick={handleLogout} style={{ padding: "10px 15px", backgroundColor: "#555", color: "white", border: "none", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" }}>
+        <button
+          onClick={handleLogout}
+          style={{
+            padding: "10px 15px",
+            backgroundColor: "#555",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            cursor: "pointer",
+            fontWeight: "bold",
+          }}
+        >
           Secure Logout
         </button>
       </div>
 
-      <div style={{ backgroundColor: "white", padding: "30px", borderRadius: "10px", boxShadow: "0 2px 5px rgba(0,0,0,0.1)", marginBottom: "20px", textAlign: "center", borderTop: `5px solid ${totalOwed > 0 ? brandRed : brandGreen}` }}>
-        <h3 style={{ margin: "0 0 10px 0", color: "#666" }}>Total Outstanding Fines</h3>
-        <h1 style={{ margin: 0, fontSize: "48px", color: totalOwed > 0 ? brandRed : brandGreen }}>
-          {totalOwed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      <div
+        style={{
+          backgroundColor: "white",
+          padding: "30px",
+          borderRadius: "10px",
+          boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+          marginBottom: "20px",
+          textAlign: "center",
+          borderTop: `5px solid ${totalOwed > 0 ? brandRed : brandGreen}`,
+        }}
+      >
+        <h3 style={{ margin: "0 0 10px 0", color: "#666" }}>
+          Total Outstanding Fines
+        </h3>
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "48px",
+            color: totalOwed > 0 ? brandRed : brandGreen,
+          }}
+        >
+          {totalOwed.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}
         </h1>
-        {totalOwed === 0 && <p style={{ color: brandGreen, fontWeight: "bold", marginTop: "10px" }}>You have no pending traffic violations. Drive safely!</p>}
+        {totalOwed === 0 && (
+          <p
+            style={{ color: brandGreen, fontWeight: "bold", marginTop: "10px" }}
+          >
+            You have no pending traffic violations. Drive safely!
+          </p>
+        )}
       </div>
 
-      <div style={{ backgroundColor: "white", padding: "30px", borderRadius: "10px", boxShadow: "0 2px 5px rgba(0,0,0,0.1)", marginBottom: "30px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+      <div
+        style={{
+          backgroundColor: "white",
+          padding: "30px",
+          borderRadius: "10px",
+          boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+          marginBottom: "30px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "20px",
+          }}
+        >
           <h3 style={{ margin: 0, color: "#333" }}>Your Registered Vehicles</h3>
-          <button onClick={() => setShowAddForm(!showAddForm)} style={{ padding: "10px 15px", backgroundColor: brandGreen, color: "white", border: "none", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" }}>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            style={{
+              padding: "10px 15px",
+              backgroundColor: brandGreen,
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
             {showAddForm ? "Cancel" : "+ Add New Vehicle"}
           </button>
         </div>
         {showAddForm && (
-          <div style={{ marginBottom: "20px", padding: "20px", border: `2px solid ${brandGreen}`, borderRadius: "10px", backgroundColor: "#e6f4ea" }}>
-            <AddVehicle onVehicleAdded={() => { fetchVehicles(); setShowAddForm(false); }} />
+          <div
+            style={{
+              marginBottom: "20px",
+              padding: "20px",
+              border: `2px solid ${brandGreen}`,
+              borderRadius: "10px",
+              backgroundColor: "#e6f4ea",
+            }}
+          >
+            <AddVehicle
+              onVehicleAdded={() => {
+                fetchVehicles();
+                setShowAddForm(false);
+              }}
+            />
           </div>
         )}
         {vehicles.length === 0 ? (
-          <p style={{ color: "#666" }}>No vehicles registered to this license yet.</p>
+          <p style={{ color: "#666" }}>
+            No vehicles registered to this license yet.
+          </p>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "15px" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+              gap: "15px",
+            }}
+          >
             {vehicles.map((vehicle) => (
-              <div key={vehicle.id} style={{ padding: "20px", border: "1px solid #ddd", borderRadius: "8px", backgroundColor: "#fafafa" }}>
-                <h2 style={{ margin: "0 0 5px 0", color: "#333", letterSpacing: "2px" }}>{vehicle.plate_number}</h2>
-                <p style={{ margin: 0, color: "#666" }}>{vehicle.vehicle_model || "Unknown Model"}</p>
+              <div
+                key={vehicle.id}
+                style={{
+                  padding: "20px",
+                  border: "1px solid #ddd",
+                  borderRadius: "8px",
+                  backgroundColor: "#fafafa",
+                }}
+              >
+                <h2
+                  style={{
+                    margin: "0 0 5px 0",
+                    color: "#333",
+                    letterSpacing: "2px",
+                  }}
+                >
+                  {vehicle.plate_number}
+                </h2>
+                <p style={{ margin: 0, color: "#666" }}>
+                  {vehicle.vehicle_model || "Unknown Model"}
+                </p>
               </div>
             ))}
           </div>
@@ -249,23 +376,99 @@ function OffenderDashboard() {
       {isLoading ? (
         <p>Loading your records...</p>
       ) : tickets.length === 0 ? (
-        <p style={{ color: "#666" }}>No records found linked to your Driver''s License.</p>
+        <p style={{ color: "#666" }}>
+          No records found linked to your Driver''s License.
+        </p>
       ) : (
         <div style={{ display: "grid", gap: "15px" }}>
           {tickets.map((ticket) => (
-            <div key={ticket.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "white", padding: "20px", borderRadius: "10px", boxShadow: "0 2px 5px rgba(0,0,0,0.1)", borderLeft: `5px solid ${ticket.payment_status === "Paid" ? brandGreen : brandRed}` }}>
+            <div
+              key={ticket.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                backgroundColor: "white",
+                padding: "20px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+                borderLeft: `5px solid ${ticket.payment_status === "Paid" ? brandGreen : brandRed}`,
+              }}
+            >
               <div>
-                <h4 style={{ margin: "0 0 5px 0", color: "#333" }}>Ref: {ticket.reference_id}</h4>
-                <p style={{ margin: "0 0 5px 0", color: "#666", fontSize: "14px" }}>Date: {new Date(ticket.date_time).toLocaleDateString()}</p>
-                <p style={{ margin: 0, color: "#666", fontSize: "14px" }}><strong>Location:</strong> {ticket.location}</p>
+                <h4 style={{ margin: "0 0 5px 0", color: "#333" }}>
+                  Ref: {ticket.reference_id}
+                </h4>
+                <p
+                  style={{
+                    margin: "0 0 5px 0",
+                    color: "#666",
+                    fontSize: "14px",
+                  }}
+                >
+                  Date: {new Date(ticket.date_time).toLocaleDateString()}
+                </p>
+                <p style={{ margin: 0, color: "#666", fontSize: "14px" }}>
+                  <strong>Location:</strong> {ticket.location}
+                </p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <h3 style={{ margin: "0 0 5px 0", color: "#333" }}>{parseFloat(ticket.amount_due).toLocaleString()}</h3>
+                <h3 style={{ margin: "0 0 5px 0", color: "#333" }}>
+                  {parseFloat(ticket.amount_due).toLocaleString()}
+                </h3>
                 {ticket.payment_status === "Paid" ? (
-                  <span style={{ backgroundColor: "#e6f4ea", color: brandGreen, padding: "5px 10px", borderRadius: "20px", fontSize: "14px", fontWeight: "bold" }}>Cleared</span>
+                  <span
+                    style={{
+                      backgroundColor: "#e6f4ea",
+                      color: brandGreen,
+                      padding: "5px 10px",
+                      borderRadius: "20px",
+                      fontSize: "14px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Cleared
+                  </span>
                 ) : (
-                  <button onClick={() => openPaymentModal(ticket)} disabled={isProcessingPayment && ticketToPay && ticketToPay.id === ticket.id} style={{ padding: "8px 15px", backgroundColor: brandRed, color: "white", border: "none", borderRadius: "5px", cursor: isProcessingPayment && ticketToPay && ticketToPay.id === ticket.id ? "not-allowed" : "pointer", fontWeight: "bold", opacity: isProcessingPayment && ticketToPay && ticketToPay.id === ticket.id ? 0.6 : 1 }}>
-                    {isProcessingPayment && ticketToPay && ticketToPay.id === ticket.id ? (<span style={{ display: "inline-flex", alignItems: "center" }}><Spinner size={14} /> Processing...</span>) : ("Pay Now")}
+                  <button
+                    onClick={() => openPaymentModal(ticket)}
+                    disabled={
+                      isProcessingPayment &&
+                      ticketToPay &&
+                      ticketToPay.id === ticket.id
+                    }
+                    style={{
+                      padding: "8px 15px",
+                      backgroundColor: brandRed,
+                      color: "white",
+                      border: "none",
+                      borderRadius: "5px",
+                      cursor:
+                        isProcessingPayment &&
+                        ticketToPay &&
+                        ticketToPay.id === ticket.id
+                          ? "not-allowed"
+                          : "pointer",
+                      fontWeight: "bold",
+                      opacity:
+                        isProcessingPayment &&
+                        ticketToPay &&
+                        ticketToPay.id === ticket.id
+                          ? 0.6
+                          : 1,
+                    }}
+                  >
+                    {isProcessingPayment &&
+                    ticketToPay &&
+                    ticketToPay.id === ticket.id ? (
+                      <span
+                        style={{ display: "inline-flex", alignItems: "center" }}
+                      >
+                        <Spinner size={14} /> Processing...
+                      </span>
+                    ) : (
+                      "Pay Now"
+                    )}
                   </button>
                 )}
               </div>
@@ -275,64 +478,99 @@ function OffenderDashboard() {
       )}
 
       {isPaymentModalOpen && ticketToPay && (
-        <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0, 0, 0, 0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000 }}>
-          <div style={{ backgroundColor: "white", padding: "30px", borderRadius: "10px", width: "90%", maxWidth: "400px", textAlign: "center", boxShadow: "0 5px 15px rgba(0,0,0,0.3)" }}>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0, 0, 0, 0.6)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              padding: "30px",
+              borderRadius: "10px",
+              width: "90%",
+              maxWidth: "400px",
+              textAlign: "center",
+              boxShadow: "0 5px 15px rgba(0,0,0,0.3)",
+            }}
+          >
             <h2 style={{ color: "#333", marginTop: 0 }}>Confirm Payment</h2>
-            <div style={{ backgroundColor: "#f8f9fa", padding: "15px", borderRadius: "8px", marginBottom: "20px", border: "1px solid #eee" }}>
-              <p style={{ margin: "0 0 10px 0", color: "#555" }}>You are about to clear ticket:</p>
-              <h3 style={{ margin: "0 0 10px 0", color: "#007A33" }}>{ticketToPay.reference_id || ticketToPay.reference_code}</h3>
-              <h1 style={{ margin: 0, color: "#DA291C" }}>{parseFloat(ticketToPay.amount_due).toLocaleString()}</h1>
+            <div
+              style={{
+                backgroundColor: "#f8f9fa",
+                padding: "15px",
+                borderRadius: "8px",
+                marginBottom: "20px",
+                border: "1px solid #eee",
+              }}
+            >
+              <p style={{ margin: "0 0 10px 0", color: "#555" }}>
+                You are about to clear ticket:
+              </p>
+              <h3 style={{ margin: "0 0 10px 0", color: "#007A33" }}>
+                {ticketToPay.reference_id || ticketToPay.reference_code}
+              </h3>
+              <h1 style={{ margin: 0, color: "#DA291C" }}>
+                {parseFloat(ticketToPay.amount_due).toLocaleString()}
+              </h1>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "15px" }}>
-              <button onClick={() => setIsPaymentModalOpen(false)} style={{ flex: 1, padding: "12px", backgroundColor: "#e9ecef", color: "#333", border: "none", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" }}>Cancel</button>
-              <button 
-                onClick={() => {
-                  console.log("💳 Pay button clicked");
-                  const newRef = `OYRTMA-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-                  const amount = Math.round(parseFloat(ticketToPay.amount_due) * 100);
-                  console.log("📝 Generated reference:", newRef);
-                  console.log("   Amount:", amount);
-
-                  // Store reference
-                  setLastPaymentRef(newRef);
-                  
-                  // Close modal
-                  setIsPaymentModalOpen(false);
-
-                  // Initialize Paystack with fresh config - bypass state sync issues
-                  setTimeout(() => {
-                    console.log("🎬 Initializing Paystack payment with correct config...");
-                    const paystackConfig = {
-                      reference: newRef,
-                      email: "driver@test.com",
-                      amount: amount,
-                      publicKey: paystackPublicKey,
-                    };
-                    console.log("✅ Paystack config:", paystackConfig);
-                    
-                    // Call Paystack directly
-                    window.PaystackPop.setUp({
-                      key: paystackConfig.publicKey,
-                      email: paystackConfig.email,
-                      amount: paystackConfig.amount,
-                      ref: paystackConfig.reference,
-                      currency: 'NGN',
-                      onClose: handlePaystackClose,
-                      onSuccess: (response) => {
-                        console.log("� Paystack success:", response);
-                        handlePaystackSuccess(response.reference);
-                      }
-                    });
-                    window.PaystackPop.send();
-                  }, 100);
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "15px",
+              }}
+            >
+              <button
+                onClick={() => setIsPaymentModalOpen(false)}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  backgroundColor: "#e9ecef",
+                  color: "#333",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
                 }}
-                style={{ flex: 1, padding: "12px", backgroundColor: "#007A33", color: "white", border: "none", borderRadius: "5px", cursor: paystackPublicKey ? "pointer" : "not-allowed", fontWeight: "bold" }} 
-                disabled={!paystackPublicKey || isProcessingPayment}
               >
-                {!paystackPublicKey ? "Loading payment..." : isProcessingPayment ? "Processing..." : "Pay with Paystack"}
+                Cancel
               </button>
+              {paystackPublicKey && lastPaymentRef && ticketToPay && (
+                <PaystackButton
+                  email="driver@test.com"
+                  amount={Math.round(parseFloat(ticketToPay.amount_due) * 100)}
+                  reference={lastPaymentRef}
+                  publicKey={paystackPublicKey}
+                  text={isProcessingPayment ? "Processing..." : "Pay with Paystack"}
+                  onSuccess={(reference) => handlePaystackSuccess(reference)}
+                  onClose={handlePaystackClose}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    backgroundColor: "#007A33",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: isProcessingPayment ? "not-allowed" : "pointer",
+                    fontWeight: "bold",
+                  }}
+                  disabled={isProcessingPayment}
+                />
+              )}
             </div>
-            <div style={{ marginTop: "15px", fontSize: "12px", color: "#888" }}>Secured by Paystack</div>
+            <div style={{ marginTop: "15px", fontSize: "12px", color: "#888" }}>
+              Secured by Paystack
+            </div>
           </div>
         </div>
       )}
