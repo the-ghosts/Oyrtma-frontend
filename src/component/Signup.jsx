@@ -12,6 +12,7 @@ function Signup() {
   const [rank, setRank] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState(""); // NEW: Email State
   const [password, setPassword] = useState("");
 
   const [isLoading, setIsLoading] = useState(false);
@@ -26,14 +27,18 @@ function Signup() {
     try {
       await axios.post("http://127.0.0.1:8000/api/register/", {
         username: staffId,
+        email: email, // NEW: Sending email to Django
         password: password,
-        first_name: firstName,
-        last_name: `${rank} ${lastName}`,
+        first_name: `${rank} ${firstName}`,
+        last_name: lastName,
       });
+
       setIsSuccess(true);
     } catch (err) {
       if (err.response && err.response.data.username) {
         setError("This Staff ID Number is already registered in the system.");
+      } else if (err.response && err.response.data.email) {
+        setError("This Email Address is already registered.");
       } else {
         setError("Failed to submit registration. Please check your details.");
       }
@@ -43,7 +48,6 @@ function Signup() {
   };
 
   // --- CLEAN CSS VARIABLES ---
-  // Adding boxSizing: 'border-box' fixes the overflow bug!
   const inputStyle = {
     padding: "12px",
     fontSize: "16px",
@@ -84,14 +88,13 @@ function Signup() {
           />
           <h2 style={{ color: brandGreen }}>Registration Received</h2>
           <p style={{ color: "#555", lineHeight: "1.5", marginBottom: "25px" }}>
-            {rank} <strong>{lastName}</strong>, your official details have been
-            securely transmitted to Headquarters.
+            <strong>{rank} {firstName} {lastName}</strong>, your official details have been securely transmitted to Headquarters.
             <br />
             <br />
             Your account is currently{" "}
             <strong style={{ color: brandRed }}>Pending Approval</strong>. You
-            will not be able to log in until the System Administrator verifies
-            your Staff ID. Check back in 2-3 days.
+            will be notified at <strong>{email}</strong> once the System
+            Administrator verifies your Staff ID.
           </p>
           <button
             onClick={() => navigate("/")}
@@ -160,7 +163,6 @@ function Signup() {
           }}
         >
           <div style={{ display: "flex", gap: "10px", width: "100%" }}>
-            {/* Using our clean inputStyle here! */}
             <input
               type="text"
               placeholder="First Name"
@@ -195,6 +197,17 @@ function Signup() {
             <option value="Marshal">Marshal</option>
           </select>
 
+          {/* NEW: Required Email Field */}
+          <input
+            type="email"
+            placeholder="Official Email Address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isLoading}
+            required
+            style={inputStyle}
+          />
+
           <input
             type="text"
             placeholder="Official Staff ID Number"
@@ -204,7 +217,6 @@ function Signup() {
             required
             style={inputStyle}
           />
-
           <input
             type="password"
             placeholder="Create Secure Password"

@@ -6,6 +6,7 @@ import Signup from './component/Signup'
 import OffenderSignup from './component/OffenderSignup' 
 import OffenderLogin from './component/OffenderLogin'
 import OffenderDashboard from './component/OffenderDashboard' 
+import AdminDashboard from './component/AdminDashboard'
 
 function App() {
   return (
@@ -21,7 +22,8 @@ function App() {
         <Route path="/offender-signup" element={<OffenderSignup />} />
         <Route path="/offender-login" element={<OffenderLogin />} />
         <Route path="/offender-dashboard" element={<OffenderDashboard />} />
-        
+        <Route path="/admin-dashboard" element={<AdminDashboard/>}/>
+      
       </Routes>
     </BrowserRouter>
   )
