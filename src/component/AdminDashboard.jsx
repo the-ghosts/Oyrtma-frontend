@@ -5,7 +5,7 @@ import oyrtmaLogo from "../assets/OYRTMA.png";
 
 function AdminDashboard() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("dashboard"); // 'dashboard', 'offences', 'officers', 'analytics'
 
   // Data States
   const [stats, setStats] = useState({
@@ -13,6 +13,12 @@ function AdminDashboard() {
     pending_revenue: 0,
     total_tickets: 0,
     active_officers: 0,
+    this_month_revenue: 0,
+    last_month_revenue: 0,
+    revenue_growth: 0,
+    top_locations: [],
+    top_officers: [],
+    top_offences: [],
   });
   const [allTickets, setAllTickets] = useState([]);
   const [offences, setOffences] = useState([]);
@@ -28,8 +34,6 @@ function AdminDashboard() {
     description: "",
     fine_amount: "",
   });
-
-  // NEW: Officer Inspection State
   const [selectedOfficer, setSelectedOfficer] = useState(null);
 
   // Custom UI States
@@ -40,6 +44,13 @@ function AdminDashboard() {
   });
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [officerDeleteId, setOfficerDeleteId] = useState(null);
+
+  const [ticketSearch, setTicketSearch] = useState("");
+  const [ticketPage, setTicketPage] = useState(1);
+  const ticketsPerPage = 10;
+
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   const brandGreen = "#007A33";
   const brandRed = "#DA291C";
@@ -62,10 +73,11 @@ function AdminDashboard() {
       if (!token) return navigate("/");
       const headers = { Authorization: `Bearer ${token}` };
 
-      const statsRes = await axios.get(
-        "http://127.0.0.1:8000/api/admin/stats/",
-        { headers },
-      );
+      const statsUrl = startDate && endDate 
+        ? `http://127.0.0.1:8000/api/admin/stats/?start_date=${startDate}&end_date=${endDate}`
+        : "http://127.0.0.1:8000/api/admin/stats/";
+
+      const statsRes = await axios.get(statsUrl, { headers });
       setStats(statsRes.data);
 
       const ticketsRes = await axios.get(
@@ -183,13 +195,12 @@ function AdminDashboard() {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       showNotification("Officer badge granted successfully!", "success");
-
       setOfficersList(
         officersList.map((officer) =>
           officer.id === id ? { ...officer, is_staff: true } : officer,
         ),
       );
-      setSelectedOfficer(null); // Close modal after approval
+      setSelectedOfficer(null);
     } catch (error) {
       showNotification("Failed to approve officer.", "error");
     }
@@ -206,13 +217,17 @@ function AdminDashboard() {
       setOfficersList(
         officersList.filter((officer) => officer.id !== officerDeleteId),
       );
-      setSelectedOfficer(null); // Close profile modal if open
+      setSelectedOfficer(null);
     } catch (error) {
       showNotification("Failed to remove user.", "error");
     } finally {
       setOfficerDeleteId(null);
     }
   };
+
+  // HELPER: Find highest count for CSS Bar Charts
+  const getMaxValue = (array) =>
+    array.length > 0 ? Math.max(...array.map((item) => item.count)) : 1;
 
   if (isLoading)
     return (
@@ -259,6 +274,7 @@ function AdminDashboard() {
 
       {/* HEADER SECTION */}
       <div
+        className="no-print"
         style={{
           display: "flex",
           justifyContent: "space-between",
@@ -296,7 +312,15 @@ function AdminDashboard() {
       </div>
 
       {/* TABS NAVIGATION */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+      <div
+        className="no-print"
+        style={{
+          display: "flex",
+          gap: "10px",
+          marginBottom: "20px",
+          flexWrap: "wrap",
+        }}
+      >
         <button
           onClick={() => setActiveTab("dashboard")}
           style={{
@@ -313,6 +337,21 @@ function AdminDashboard() {
           Overview & Revenue
         </button>
         <button
+          onClick={() => setActiveTab("analytics")}
+          style={{
+            padding: "10px 20px",
+            backgroundColor: activeTab === "analytics" ? brandGreen : "white",
+            color: activeTab === "analytics" ? "white" : "#64748b",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer",
+            fontWeight: "bold",
+            boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+          }}
+        >
+          Analytics & Reports
+        </button>
+        <button
           onClick={() => setActiveTab("offences")}
           style={{
             padding: "10px 20px",
@@ -325,7 +364,7 @@ function AdminDashboard() {
             boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
           }}
         >
-          Manage Offences & Prices
+          Manage Offences
         </button>
         <button
           onClick={() => setActiveTab("officers")}
@@ -340,11 +379,11 @@ function AdminDashboard() {
             boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
           }}
         >
-          Manage Field Officers
+          Manage Officers
         </button>
       </div>
 
-      {/* --- TAB 1: DASHBOARD --- */}
+      {/* --- TAB 1: OVERVIEW DASHBOARD --- */}
       {activeTab === "dashboard" && (
         <>
           <div
@@ -453,122 +492,43 @@ function AdminDashboard() {
             </div>
           </div>
 
-          <div
-            style={{
-              backgroundColor: "white",
-              padding: "25px",
-              borderRadius: "10px",
-              boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-            }}
-          >
-            <h3
-              style={{
-                margin: "0 0 20px 0",
-                color: "#1e293b",
-                borderBottom: "2px solid #f1f5f9",
-                paddingBottom: "10px",
-              }}
-            >
-              Statewide Traffic Offence Log
-            </h3>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                textAlign: "left",
-              }}
-            >
+          <div style={{ backgroundColor: "white", padding: "25px", borderRadius: "10px", boxShadow: "0 2px 5px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #f1f5f9", paddingBottom: "10px", marginBottom: "20px" }}>
+              <h3 style={{ margin: 0, color: "#1e293b" }}>Statewide Traffic Offence Log</h3>
+              {/* NEW: Real-time Search Bar */}
+              <input 
+                type="text" 
+                placeholder="Search by Ref ID or Location..." 
+                value={ticketSearch}
+                onChange={(e) => { setTicketSearch(e.target.value); setTicketPage(1); }} // Reset to page 1 on search
+                style={{ padding: "8px 12px", borderRadius: "5px", border: "1px solid #ccc", width: "250px" }}
+              />
+            </div>
+            
+            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+              {/* Your existing thead goes here */}
               <thead>
                 <tr style={{ backgroundColor: "#f8fafc", color: "#475569" }}>
-                  <th
-                    style={{
-                      padding: "12px",
-                      borderBottom: "1px solid #e2e8f0",
-                    }}
-                  >
-                    Reference
-                  </th>
-                  <th
-                    style={{
-                      padding: "12px",
-                      borderBottom: "1px solid #e2e8f0",
-                    }}
-                  >
-                    Date
-                  </th>
-                  <th
-                    style={{
-                      padding: "12px",
-                      borderBottom: "1px solid #e2e8f0",
-                    }}
-                  >
-                    Location
-                  </th>
-                  <th
-                    style={{
-                      padding: "12px",
-                      borderBottom: "1px solid #e2e8f0",
-                    }}
-                  >
-                    Amount
-                  </th>
-                  <th
-                    style={{
-                      padding: "12px",
-                      borderBottom: "1px solid #e2e8f0",
-                    }}
-                  >
-                    Status
-                  </th>
+                  <th style={{ padding: "12px", borderBottom: "1px solid #e2e8f0" }}>Reference</th>
+                  <th style={{ padding: "12px", borderBottom: "1px solid #e2e8f0" }}>Date</th>
+                  <th style={{ padding: "12px", borderBottom: "1px solid #e2e8f0" }}>Location</th>
+                  <th style={{ padding: "12px", borderBottom: "1px solid #e2e8f0" }}>Amount</th>
+                  <th style={{ padding: "12px", borderBottom: "1px solid #e2e8f0" }}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {allTickets.map((ticket) => (
-                  <tr
-                    key={ticket.id}
-                    style={{ borderBottom: "1px solid #f1f5f9" }}
-                  >
-                    <td
-                      style={{
-                        padding: "12px",
-                        fontWeight: "bold",
-                        color: "#334155",
-                      }}
-                    >
-                      {ticket.reference_id}
-                    </td>
-                    <td style={{ padding: "12px", color: "#64748b" }}>
-                      {new Date(ticket.date_time).toLocaleDateString()}
-                    </td>
-                    <td style={{ padding: "12px", color: "#64748b" }}>
-                      {ticket.location}
-                    </td>
-                    <td
-                      style={{
-                        padding: "12px",
-                        fontWeight: "bold",
-                        color: "#334155",
-                      }}
-                    >
-                      ₦{parseFloat(ticket.amount_due).toLocaleString()}
-                    </td>
+                {/* NEW: Filter and Paginate the data before mapping */}
+                {allTickets
+                  .filter(t => t.reference_id?.toLowerCase().includes(ticketSearch.toLowerCase()) || t.location?.toLowerCase().includes(ticketSearch.toLowerCase()))
+                  .slice((ticketPage - 1) * ticketsPerPage, ticketPage * ticketsPerPage)
+                  .map((ticket) => (
+                  <tr key={ticket.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <td style={{ padding: "12px", fontWeight: "bold", color: "#334155" }}>{ticket.reference_id}</td>
+                    <td style={{ padding: "12px", color: "#64748b" }}>{new Date(ticket.date_time).toLocaleDateString()}</td>
+                    <td style={{ padding: "12px", color: "#64748b" }}>{ticket.location}</td>
+                    <td style={{ padding: "12px", fontWeight: "bold", color: "#334155" }}>₦{parseFloat(ticket.amount_due).toLocaleString()}</td>
                     <td style={{ padding: "12px" }}>
-                      <span
-                        style={{
-                          backgroundColor:
-                            ticket.payment_status === "Paid"
-                              ? "#dcfce7"
-                              : "#fee2e2",
-                          color:
-                            ticket.payment_status === "Paid"
-                              ? brandGreen
-                              : brandRed,
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "12px",
-                          fontWeight: "bold",
-                        }}
-                      >
+                      <span style={{ backgroundColor: ticket.payment_status === "Paid" ? "#dcfce7" : "#fee2e2", color: ticket.payment_status === "Paid" ? brandGreen : brandRed, padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold" }}>
                         {ticket.payment_status}
                       </span>
                     </td>
@@ -576,11 +536,333 @@ function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+
+            {/* NEW: Pagination Controls */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "20px", paddingTop: "10px", borderTop: "1px solid #f1f5f9" }}>
+              <button 
+                onClick={() => setTicketPage(prev => Math.max(prev - 1, 1))} 
+                disabled={ticketPage === 1}
+                style={{ padding: "8px 15px", backgroundColor: ticketPage === 1 ? "#e2e8f0" : brandGreen, color: ticketPage === 1 ? "#94a3b8" : "white", border: "none", borderRadius: "5px", cursor: ticketPage === 1 ? "not-allowed" : "pointer", fontWeight: "bold" }}
+              >Previous</button>
+              <span style={{ color: "#64748b", fontWeight: "bold" }}>Page {ticketPage}</span>
+              <button 
+                onClick={() => setTicketPage(prev => prev + 1)} 
+                disabled={ticketPage * ticketsPerPage >= allTickets.filter(t => t.reference_id?.toLowerCase().includes(ticketSearch.toLowerCase()) || t.location?.toLowerCase().includes(ticketSearch.toLowerCase())).length}
+                style={{ padding: "8px 15px", backgroundColor: ticketPage * ticketsPerPage >= allTickets.length ? "#e2e8f0" : brandGreen, color: ticketPage * ticketsPerPage >= allTickets.length ? "#94a3b8" : "white", border: "none", borderRadius: "5px", cursor: ticketPage * ticketsPerPage >= allTickets.length ? "not-allowed" : "pointer", fontWeight: "bold" }}
+              >Next</button>
+            </div>
           </div>
         </>
       )}
 
-      {/* --- TAB 2: MANAGE OFFENCES --- */}
+      {/* --- TAB 2: ANALYTICS & REPORTS (NEW!) --- */}
+      {activeTab === "analytics" && (
+        <>
+          <style>
+            {`
+              @media print {
+                /* Hide everything with the no-print class */
+                .no-print { display: none !important; }
+                
+                /* Force a clean white background */
+                body, html { background-color: white !important; }
+                
+                /* Prevent the charts from being sliced in half across pages */
+                #printable-analytics > div > div { 
+                    page-break-inside: avoid; 
+                    break-inside: avoid; 
+                }
+              }
+            `}
+          </style>
+          <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", backgroundColor: "white", padding: "15px", borderRadius: "10px", boxShadow: "0 2px 5px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              <span style={{ fontWeight: "bold", color: "#334155" }}>Filter Period:</span>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ padding: "8px", border: "1px solid #ccc", borderRadius: "5px" }} />
+              <span style={{ color: "#64748b" }}>to</span>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ padding: "8px", border: "1px solid #ccc", borderRadius: "5px" }} />
+              <button onClick={fetchAdminData} style={{ padding: "8px 15px", backgroundColor: brandGreen, color: "white", border: "none", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" }}>Apply</button>
+              {(startDate || endDate) && <button onClick={() => { setStartDate(""); setEndDate(""); setTimeout(fetchAdminData, 100); }} style={{ padding: "8px 15px", backgroundColor: "#e2e8f0", color: "#475569", border: "none", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" }}>Clear</button>}
+            </div>
+            
+            <button onClick={() => window.print()} style={{ padding: "10px 20px", backgroundColor: "#334155", color: "white", border: "none", borderRadius: "5px", cursor: "pointer", fontWeight: "bold", display: "flex", alignItems: "center", gap: "8px" }}>
+              🖨️ Export / Print PDF Report
+            </button>
+          </div>
+
+          <div id="printable-analytics">
+            {/* Revenue Growth Card */}
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "25px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                marginBottom: "20px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            ></div>
+            <div>
+              <h3 style={{ margin: "0 0 5px 0", color: "#1e293b" }}>
+                Monthly Revenue Performance
+              </h3>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
+                Collected fines comparing this month to last month.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "30px", alignItems: "center" }}>
+              <div style={{ textAlign: "right" }}>
+                <p
+                  style={{
+                    margin: "0 0 5px 0",
+                    color: "#64748b",
+                    fontSize: "12px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Last Month
+                </p>
+                <h3 style={{ margin: 0, color: "#94a3b8" }}>
+                  ₦{stats.last_month_revenue.toLocaleString()}
+                </h3>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p
+                  style={{
+                    margin: "0 0 5px 0",
+                    color: brandGreen,
+                    fontSize: "12px",
+                    textTransform: "uppercase",
+                    fontWeight: "bold",
+                  }}
+                >
+                  This Month
+                </p>
+                <h2 style={{ margin: 0, color: brandGreen, fontSize: "28px" }}>
+                  ₦{stats.this_month_revenue.toLocaleString()}
+                </h2>
+              </div>
+              <div
+                style={{
+                  backgroundColor:
+                    stats.revenue_growth >= 0 ? "#dcfce7" : "#fee2e2",
+                  color: stats.revenue_growth >= 0 ? brandGreen : brandRed,
+                  padding: "10px 15px",
+                  borderRadius: "8px",
+                  fontWeight: "bold",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                {stats.revenue_growth >= 0 ? "▲" : "▼"}{" "}
+                {Math.abs(stats.revenue_growth)}%
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+              gap: "20px",
+            }}
+          >
+            {/* Top Crime Hotspots */}
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "25px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+              }}
+            >
+              <h3
+                style={{
+                  margin: "0 0 20px 0",
+                  color: "#1e293b",
+                  borderBottom: "2px solid #f1f5f9",
+                  paddingBottom: "10px",
+                }}
+              >
+                📍 Top Crime Hotspots
+              </h3>
+              {stats.top_locations.length === 0 ? (
+                <p style={{ color: "#94a3b8" }}>No data available.</p>
+              ) : (
+                stats.top_locations.map((loc, idx) => (
+                  <div key={idx} style={{ marginBottom: "15px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "5px",
+                        fontSize: "14px",
+                      }}
+                    >
+                      <span style={{ fontWeight: "bold", color: "#334155" }}>
+                        {loc.location}
+                      </span>
+                      <span style={{ color: "#64748b", fontWeight: "bold" }}>
+                        {loc.count} tickets
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        width: "100%",
+                        backgroundColor: "#f1f5f9",
+                        borderRadius: "4px",
+                        height: "10px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${(loc.count / getMaxValue(stats.top_locations)) * 100}%`,
+                          backgroundColor: brandRed,
+                          height: "100%",
+                          borderRadius: "4px",
+                          transition: "width 1s ease-in-out",
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Top Performing Officers */}
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "25px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+              }}
+            >
+              <h3
+                style={{
+                  margin: "0 0 20px 0",
+                  color: "#1e293b",
+                  borderBottom: "2px solid #f1f5f9",
+                  paddingBottom: "10px",
+                }}
+              >
+                👮 Top Catch Rates (Officers)
+              </h3>
+              {stats.top_officers.length === 0 ? (
+                <p style={{ color: "#94a3b8" }}>No data available.</p>
+              ) : (
+                stats.top_officers.map((off, idx) => (
+                  <div key={idx} style={{ marginBottom: "15px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "5px",
+                        fontSize: "14px",
+                      }}
+                    >
+                      <span style={{ fontWeight: "bold", color: "#334155" }}>
+                        {off.officer__first_name} {off.officer__last_name}
+                      </span>
+                      <span style={{ color: "#64748b", fontWeight: "bold" }}>
+                        {off.count} apprehensions
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        width: "100%",
+                        backgroundColor: "#f1f5f9",
+                        borderRadius: "4px",
+                        height: "10px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${(off.count / getMaxValue(stats.top_officers)) * 100}%`,
+                          backgroundColor: "#3b82f6",
+                          height: "100%",
+                          borderRadius: "4px",
+                          transition: "width 1s ease-in-out",
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Most Frequent Offences */}
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "25px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+              }}
+            >
+              <h3
+                style={{
+                  margin: "0 0 20px 0",
+                  color: "#1e293b",
+                  borderBottom: "2px solid #f1f5f9",
+                  paddingBottom: "10px",
+                }}
+              >
+                📋 Most Frequent Violations
+              </h3>
+              {stats.top_offences.length === 0 ? (
+                <p style={{ color: "#94a3b8" }}>No data available.</p>
+              ) : (
+                stats.top_offences.map((violation, idx) => (
+                  <div key={idx} style={{ marginBottom: "15px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "5px",
+                        fontSize: "14px",
+                      }}
+                    >
+                      <span style={{ fontWeight: "bold", color: "#334155" }}>
+                        {violation.offence__name}
+                      </span>
+                      <span style={{ color: "#64748b", fontWeight: "bold" }}>
+                        {violation.count} occurrences
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        width: "100%",
+                        backgroundColor: "#f1f5f9",
+                        borderRadius: "4px",
+                        height: "10px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${(violation.count / getMaxValue(stats.top_offences)) * 100}%`,
+                          backgroundColor: "#f59e0b",
+                          height: "100%",
+                          borderRadius: "4px",
+                          transition: "width 1s ease-in-out",
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* --- TAB 3: MANAGE OFFENCES --- */}
       {activeTab === "offences" && (
         <div
           style={{
@@ -722,7 +1004,7 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* --- TAB 3: MANAGE OFFICERS --- */}
+      {/* --- TAB 4: MANAGE OFFICERS --- */}
       {activeTab === "officers" && (
         <div
           style={{
@@ -873,7 +1155,7 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* --- ADD/EDIT OFFENCE MODAL --- */}
+      {/* --- ALL MODALS (HIDDEN BUT ACTIVE) --- */}
       {isOffenceModalOpen && (
         <div
           style={{
@@ -1087,7 +1369,6 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* --- OFFICER PROFILE INSPECTION MODAL --- */}
       {selectedOfficer && (
         <div
           style={{
@@ -1141,7 +1422,6 @@ function AdminDashboard() {
                 &times;
               </button>
             </div>
-
             <div style={{ padding: "25px" }}>
               <div
                 style={{
@@ -1182,7 +1462,6 @@ function AdminDashboard() {
                   </p>
                 </div>
               </div>
-
               <div
                 style={{
                   backgroundColor: "#f8fafc",
@@ -1272,8 +1551,6 @@ function AdminDashboard() {
                   </span>
                 </div>
               </div>
-
-              {/* Action Buttons Inside the Profile Modal */}
               <div
                 style={{
                   display: "flex",
@@ -1322,7 +1599,6 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* --- DELETE OFFENCE / OFFICER MODALS (Hidden but active) --- */}
       {deleteConfirmId && (
         <div
           style={{

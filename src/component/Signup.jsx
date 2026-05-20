@@ -94,7 +94,7 @@ function Signup() {
             Your account is currently{" "}
             <strong style={{ color: brandRed }}>Pending Approval</strong>. You
             will be notified at <strong>{email}</strong> once the System
-            Administrator verifies your Staff ID.
+            Administrator verifies your Staff ID. You can expect a response within 1-3 business days.
           </p>
           <button
             onClick={() => navigate("/")}

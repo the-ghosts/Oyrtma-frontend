@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import oyrtmaLogo from "../assets/OYRTMA.png";
 import AddVehicle from "./AddVehicle";
-import { PaystackButton } from "react-paystack";
 
 function OffenderDashboard() {
   const navigate = useNavigate();
@@ -11,11 +10,14 @@ function OffenderDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [vehicles, setVehicles] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  // Payment States
+
   const [ticketToPay, setTicketToPay] = useState(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [lastPaymentRef, setLastPaymentRef] = useState(null);
-  const [paystackPublicKey, setPaystackPublicKey] = useState(null);
+  const [paystackPublicKey, setPaystackPublicKey] = useState("");
+  const [evidenceData, setEvidenceData] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const brandGreen = "#007A33";
   const brandRed = "#DA291C";
@@ -35,40 +37,30 @@ function OffenderDashboard() {
   const fetchPaystackConfig = async () => {
     try {
       const token = localStorage.getItem("access_token");
-      if (!token) {
-        navigate("/offender-login");
-        return;
-      }
+      if (!token) return navigate("/offender-login");
       const res = await axios.get(
         "http://127.0.0.1:8000/api/payments/config/",
         { headers: { Authorization: `Bearer ${token}` } },
       );
       setPaystackPublicKey(res.data.publicKey);
-      setConfig((prev) => ({ ...prev, publicKey: res.data.publicKey }));
     } catch (err) {
       console.error("Failed to fetch Paystack config:", err.message);
-      if (err.response?.status === 401) {
-        navigate("/offender-login");
-      }
+      if (err.response?.status === 401) navigate("/offender-login");
     }
   };
 
   const fetchMyTickets = async () => {
     try {
       const token = localStorage.getItem("access_token");
-      if (!token) {
-        navigate("/offender-login");
-        return;
-      }
+      if (!token) return navigate("/offender-login");
       const response = await axios.get("http://127.0.0.1:8000/api/bookings/", {
         headers: { Authorization: `Bearer ${token}` },
       });
       setTickets(response.data);
     } catch (error) {
       console.error("Failed to fetch tickets", error);
-      if (error.response && error.response.status === 401) {
+      if (error.response && error.response.status === 401)
         navigate("/offender-login");
-      }
     } finally {
       setIsLoading(false);
     }
@@ -88,71 +80,59 @@ function OffenderDashboard() {
   };
 
   const manualVerifyPayment = async (ref, ticket) => {
-    console.log("🔐 Starting manual verify with:", {
-      ref,
-      ticket_id: ticket?.id,
-    });
-    if (!ref || !ticket) {
-      console.log("⚠️ Missing ref or ticket");
-      return false;
-    }
+    console.log(
+      `5. SENDING REQUEST TO: /api/bookings/${ticket.id}/verify-payment/ with ref: ${ref}`,
+    );
+    if (!ref || !ticket) return false;
     setIsProcessingPayment(true);
     try {
       const token = localStorage.getItem("access_token");
-      if (!token) throw new Error("No auth token");
-      const endpoint = `http://127.0.0.1:8000/api/bookings/${ticket.id}/verify-payment/`;
-      console.log("📤 POST to:", endpoint, "with reference:", ref);
-      const verifyRes = await axios.post(
-        endpoint,
+      const response = await axios.post(
+        `http://127.0.0.1:8000/api/bookings/${ticket.id}/verify-payment/`,
         { reference: ref },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      console.log("✅ Verify succeeded:", verifyRes.data);
-      await fetchMyTickets();
+      console.log("6. ✅ DJANGO RESPONSE SUCCESS:", response.data);
+
+      await fetchMyTickets(); // Reloads the tickets so the UI turns green
       setLastPaymentRef(null);
       setTicketToPay(null);
       return true;
     } catch (error) {
-      console.error("❌ Verify failed:", error.message);
-      console.error("   Backend response:", error.response?.data);
-      if (error.response?.status !== 401) {
+      console.error(
+        "6. ❌ DJANGO VERIFICATION FAILED:",
+        error.response?.data || error.message,
+      );
+      if (error.response?.status !== 401)
         alert(
           `Verification failed: ${error.response?.data?.detail || error.message}`,
         );
-      }
       return false;
     } finally {
       setIsProcessingPayment(false);
     }
   };
 
-  const handlePaystackSuccess = async (reference) => {
-    console.log("🎉 Success callback fired with reference:", reference);
-    const refStr = reference.reference || reference;
-
-    // 1. Close our custom confirmation modal ONLY AFTER payment succeeds
-    setIsPaymentModalOpen(false);
-
-    // 2. Verify with Django
-    if (ticketToPay) {
-      console.log("✅ Auto-verifying with Django...");
-      await manualVerifyPayment(refStr, ticketToPay);
-    } else {
-      console.log("⚠️ Missing ticket context");
-    }
-  };
-
-  const handlePaystackClose = () => {
-    console.log("🔴 Paystack payment window closed by user");
-    // Close our custom modal if they cancel the payment
-    setIsPaymentModalOpen(false);
-  };
-  const openPaymentModal = (ticket) => {
-    // Generate the reference immediately
-    const newRef = `OYRTMA-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  const openPaymentModal = async (ticket) => {
+    setIsProcessingPayment(true);
     setTicketToPay(ticket);
-    setLastPaymentRef(newRef);
-    setIsPaymentModalOpen(true);
+    
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await axios.post(
+        `http://127.0.0.1:8000/api/bookings/${ticket.id}/initialize-payment/`, 
+        {}, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      window.location.href = res.data.data.authorization_url;
+      
+    } catch (err) {
+      console.error("Failed to initialize backend payment", err);
+      // NEW: Trigger the custom modal instead of an alert!
+      setErrorMessage("Could not connect to the payment server. Please check your connection and try again.");
+      setIsProcessingPayment(false);
+    }
   };
 
   const handleLogout = () => {
@@ -161,12 +141,13 @@ function OffenderDashboard() {
     navigate("/offender-login");
   };
 
-  const totalOwed = tickets.reduce((sum, ticket) => {
-    if (ticket.payment_status !== "Paid") {
-      return sum + parseFloat(ticket.amount_due || 0);
-    }
-    return sum;
-  }, 0);
+  const totalOwed = tickets.reduce(
+    (sum, ticket) =>
+      ticket.payment_status !== "Paid"
+        ? sum + parseFloat(ticket.amount_due || 0)
+        : sum,
+    0,
+  );
 
   const Spinner = ({ size = 16 }) => (
     <svg
@@ -194,24 +175,7 @@ function OffenderDashboard() {
         minHeight: "100vh",
       }}
     >
-      {lastPaymentRef && (
-        <div
-          style={{
-            position: "fixed",
-            top: 16,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "#0b6e4f",
-            color: "white",
-            padding: "8px 14px",
-            borderRadius: 6,
-            zIndex: 2000,
-          }}
-        >
-          Payment reference: <strong>{lastPaymentRef}</strong>
-        </div>
-      )}
-
+      {/* HEADER */}
       <div
         style={{
           display: "flex",
@@ -246,6 +210,7 @@ function OffenderDashboard() {
         </button>
       </div>
 
+      {/* OUTSTANDING FINES CARD */}
       <div
         style={{
           backgroundColor: "white",
@@ -267,6 +232,7 @@ function OffenderDashboard() {
             color: totalOwed > 0 ? brandRed : brandGreen,
           }}
         >
+          ₦
           {totalOwed.toLocaleString(undefined, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
@@ -281,6 +247,7 @@ function OffenderDashboard() {
         )}
       </div>
 
+      {/* VEHICLES SECTION */}
       <div
         style={{
           backgroundColor: "white",
@@ -372,12 +339,13 @@ function OffenderDashboard() {
         )}
       </div>
 
+      {/* TRAFFIC RECORDS / TICKETS */}
       <h3 style={{ color: "#333" }}>Your Traffic Records</h3>
       {isLoading ? (
         <p>Loading your records...</p>
       ) : tickets.length === 0 ? (
         <p style={{ color: "#666" }}>
-          No records found linked to your Driver''s License.
+          No records found linked to your Driver's License.
         </p>
       ) : (
         <div style={{ display: "grid", gap: "15px" }}>
@@ -387,7 +355,7 @@ function OffenderDashboard() {
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "center",
+                alignItems: "flex-start",
                 backgroundColor: "white",
                 padding: "20px",
                 borderRadius: "10px",
@@ -395,7 +363,7 @@ function OffenderDashboard() {
                 borderLeft: `5px solid ${ticket.payment_status === "Paid" ? brandGreen : brandRed}`,
               }}
             >
-              <div>
+              <div style={{ flex: 1 }}>
                 <h4 style={{ margin: "0 0 5px 0", color: "#333" }}>
                   Ref: {ticket.reference_id}
                 </h4>
@@ -408,63 +376,146 @@ function OffenderDashboard() {
                 >
                   Date: {new Date(ticket.date_time).toLocaleDateString()}
                 </p>
-                <p style={{ margin: 0, color: "#666", fontSize: "14px" }}>
+                <p
+                  style={{
+                    margin: "0 0 10px 0",
+                    color: "#666",
+                    fontSize: "14px",
+                  }}
+                >
                   <strong>Location:</strong> {ticket.location}
                 </p>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <h3 style={{ margin: "0 0 5px 0", color: "#333" }}>
-                  {parseFloat(ticket.amount_due).toLocaleString()}
-                </h3>
-                {ticket.payment_status === "Paid" ? (
-                  <span
+
+                <div
+                  style={{
+                    backgroundColor: "#f8fafc",
+                    padding: "10px",
+                    borderRadius: "5px",
+                    border: "1px solid #e2e8f0",
+                    display: "inline-block",
+                    minWidth: "80%",
+                  }}
+                >
+                  <p
                     style={{
-                      backgroundColor: "#e6f4ea",
-                      color: brandGreen,
-                      padding: "5px 10px",
-                      borderRadius: "20px",
+                      margin: "0 0 4px 0",
+                      color: "#333",
                       fontSize: "14px",
                       fontWeight: "bold",
                     }}
                   >
-                    Cleared
-                  </span>
+                    Offence:{" "}
+                    {ticket.offence_name || `Violation #${ticket.offence}`}
+                  </p>
+                  {ticket.offence_description && (
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "#64748b",
+                        fontSize: "12px",
+                        fontStyle: "italic",
+                      }}
+                    >
+                      "{ticket.offence_description}"
+                    </p>
+                  )}
+                </div>
+
+                {(ticket.evidence_image || ticket.evidence_video) && (
+                  <div style={{ marginTop: "12px" }}>
+                    <button
+                      onClick={() => setEvidenceData(ticket)}
+                      style={{
+                        padding: "6px 12px",
+                        backgroundColor: "#e2e8f0",
+                        color: "#334155",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "5px",
+                        cursor: "pointer",
+                        fontSize: "12px",
+                        fontWeight: "bold",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                      }}
+                    >
+                      📸 View Evidence
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ textAlign: "right", marginLeft: "20px" }}>
+                <h3 style={{ margin: "0 0 10px 0", color: "#333" }}>
+                  ₦{parseFloat(ticket.amount_due).toLocaleString()}
+                </h3>
+                {ticket.payment_status === "Paid" ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                      alignItems: "flex-end",
+                    }}
+                  >
+                    <span
+                      style={{
+                        backgroundColor: "#e6f4ea",
+                        color: brandGreen,
+                        padding: "5px 12px",
+                        borderRadius: "20px",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      Cleared
+                    </span>
+                    <button
+                      onClick={() =>
+                        navigate("/receipt", { state: { ticket } })
+                      }
+                      style={{
+                        padding: "6px 12px",
+                        backgroundColor: "#334155",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "5px",
+                        cursor: "pointer",
+                        fontSize: "12px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      🖨️ Download Receipt
+                    </button>
+                  </div>
                 ) : (
                   <button
                     onClick={() => openPaymentModal(ticket)}
                     disabled={
-                      isProcessingPayment &&
-                      ticketToPay &&
-                      ticketToPay.id === ticket.id
+                      isProcessingPayment && ticketToPay?.id === ticket.id
                     }
                     style={{
-                      padding: "8px 15px",
+                      padding: "8px 20px",
                       backgroundColor: brandRed,
                       color: "white",
                       border: "none",
                       borderRadius: "5px",
                       cursor:
-                        isProcessingPayment &&
-                        ticketToPay &&
-                        ticketToPay.id === ticket.id
+                        isProcessingPayment && ticketToPay?.id === ticket.id
                           ? "not-allowed"
                           : "pointer",
                       fontWeight: "bold",
                       opacity:
-                        isProcessingPayment &&
-                        ticketToPay &&
-                        ticketToPay.id === ticket.id
+                        isProcessingPayment && ticketToPay?.id === ticket.id
                           ? 0.6
                           : 1,
                     }}
                   >
-                    {isProcessingPayment &&
-                    ticketToPay &&
-                    ticketToPay.id === ticket.id ? (
+                    {isProcessingPayment && ticketToPay?.id === ticket.id ? (
                       <span
                         style={{ display: "inline-flex", alignItems: "center" }}
                       >
-                        <Spinner size={14} /> Processing...
+                        <Spinner size={14} /> Processing
                       </span>
                     ) : (
                       "Pay Now"
@@ -477,7 +528,8 @@ function OffenderDashboard() {
         </div>
       )}
 
-      {isPaymentModalOpen && ticketToPay && (
+      {/* --- EVIDENCE MODAL --- */}
+      {evidenceData && (
         <div
           style={{
             position: "fixed",
@@ -485,92 +537,146 @@ function OffenderDashboard() {
             left: 0,
             width: "100%",
             height: "100%",
-            backgroundColor: "rgba(0, 0, 0, 0.6)",
+            backgroundColor: "rgba(0, 0, 0, 0.8)",
+            backdropFilter: "blur(4px)",
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            zIndex: 1000,
+            zIndex: 2000,
+            padding: "20px",
           }}
         >
           <div
             style={{
               backgroundColor: "white",
-              padding: "30px",
+              padding: "20px",
               borderRadius: "10px",
-              width: "90%",
-              maxWidth: "400px",
-              textAlign: "center",
-              boxShadow: "0 5px 15px rgba(0,0,0,0.3)",
+              width: "100%",
+              maxWidth: "500px",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              position: "relative",
             }}
           >
-            <h2 style={{ color: "#333", marginTop: 0 }}>Confirm Payment</h2>
-            <div
-              style={{
-                backgroundColor: "#f8f9fa",
-                padding: "15px",
-                borderRadius: "8px",
-                marginBottom: "20px",
-                border: "1px solid #eee",
-              }}
-            >
-              <p style={{ margin: "0 0 10px 0", color: "#555" }}>
-                You are about to clear ticket:
-              </p>
-              <h3 style={{ margin: "0 0 10px 0", color: "#007A33" }}>
-                {ticketToPay.reference_id || ticketToPay.reference_code}
-              </h3>
-              <h1 style={{ margin: 0, color: "#DA291C" }}>
-                {parseFloat(ticketToPay.amount_due).toLocaleString()}
-              </h1>
-            </div>
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                gap: "15px",
+                alignItems: "center",
+                borderBottom: "1px solid #eee",
+                paddingBottom: "10px",
+                marginBottom: "15px",
               }}
             >
+              <h3 style={{ margin: 0, color: "#333" }}>Violation Evidence</h3>
               <button
-                onClick={() => setIsPaymentModalOpen(false)}
+                onClick={() => setEvidenceData(null)}
                 style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: "#e9ecef",
-                  color: "#333",
+                  background: "none",
                   border: "none",
-                  borderRadius: "5px",
+                  fontSize: "24px",
                   cursor: "pointer",
-                  fontWeight: "bold",
+                  color: "#999",
                 }}
               >
-                Cancel
+                &times;
               </button>
-              {paystackPublicKey && lastPaymentRef && ticketToPay && (
-                <PaystackButton
-                  email="driver@test.com"
-                  amount={Math.round(parseFloat(ticketToPay.amount_due) * 100)}
-                  reference={lastPaymentRef}
-                  publicKey={paystackPublicKey}
-                  text={isProcessingPayment ? "Processing..." : "Pay with Paystack"}
-                  onSuccess={(reference) => handlePaystackSuccess(reference)}
-                  onClose={handlePaystackClose}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    backgroundColor: "#007A33",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "5px",
-                    cursor: isProcessingPayment ? "not-allowed" : "pointer",
-                    fontWeight: "bold",
-                  }}
-                  disabled={isProcessingPayment}
-                />
+            </div>
+            <div
+              style={{
+                textAlign: "center",
+                maxHeight: "60vh",
+                overflowY: "auto",
+                padding: "10px",
+              }}
+            >
+              {evidenceData.evidence_image && (
+                <div style={{ marginBottom: "20px" }}>
+                  <p
+                    style={{
+                      margin: "0 0 8px 0",
+                      color: "#64748b",
+                      fontSize: "14px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Photographic Evidence
+                  </p>
+                  <img
+                    src={evidenceData.evidence_image}
+                    alt="Traffic Violation"
+                    style={{
+                      width: "100%",
+                      maxHeight: "350px",
+                      objectFit: "contain",
+                      borderRadius: "8px",
+                      border: "2px solid #e2e8f0",
+                    }}
+                  />
+                </div>
+              )}
+              {evidenceData.evidence_video && (
+                <div style={{ marginBottom: "15px" }}>
+                  <p
+                    style={{
+                      margin: "0 0 8px 0",
+                      color: "#64748b",
+                      fontSize: "14px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Video Evidence
+                  </p>
+                  <video
+                    controls
+                    style={{
+                      width: "100%",
+                      maxHeight: "350px",
+                      borderRadius: "8px",
+                      border: "2px solid #e2e8f0",
+                      backgroundColor: "black",
+                    }}
+                  >
+                    <source
+                      src={evidenceData.evidence_video}
+                      type="video/mp4"
+                    />
+                  </video>
+                </div>
               )}
             </div>
-            <div style={{ marginTop: "15px", fontSize: "12px", color: "#888" }}>
-              Secured by Paystack
-            </div>
+            <button
+              onClick={() => setEvidenceData(null)}
+              style={{
+                width: "100%",
+                padding: "12px",
+                backgroundColor: "#f1f5f9",
+                color: "#475569",
+                border: "none",
+                borderRadius: "5px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                marginTop: "15px",
+              }}
+            >
+              Close Evidence Viewer
+            </button>
+          </div>
+        </div>
+        
+        
+      )}
+      {errorMessage && (
+        <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0, 0, 0, 0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
+          <div style={{ backgroundColor: "white", padding: "30px", borderRadius: "10px", width: "90%", maxWidth: "400px", textAlign: "center", boxShadow: "0 5px 15px rgba(0,0,0,0.3)" }}>
+            <div style={{ fontSize: "48px", marginBottom: "15px" }}>⚠️</div>
+            <h2 style={{ color: "#333", margin: "0 0 10px 0" }}>Connection Error</h2>
+            <p style={{ color: "#666", marginBottom: "25px", lineHeight: "1.5" }}>{errorMessage}</p>
+            <button 
+              onClick={() => setErrorMessage("")} 
+              style={{ padding: "12px", backgroundColor: "#334155", color: "white", border: "none", borderRadius: "5px", cursor: "pointer", fontWeight: "bold", width: "100%" }}
+            >
+              Acknowledge & Close
+            </button>
           </div>
         </div>
       )}

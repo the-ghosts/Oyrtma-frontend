@@ -7,6 +7,11 @@ import OffenderSignup from './component/OffenderSignup'
 import OffenderLogin from './component/OffenderLogin'
 import OffenderDashboard from './component/OffenderDashboard' 
 import AdminDashboard from './component/AdminDashboard'
+import ForgotPassword from './component/ForgotPassword'
+import ResetPassword from './component/ResetPassword'
+import OffenderForgotPassword from './component/OffenderForgotPassword'
+import Receipt from './component/Receipt'
+import PaymentCallback from './component/PaymentCallback'
 
 function App() {
   return (
@@ -23,6 +28,11 @@ function App() {
         <Route path="/offender-login" element={<OffenderLogin />} />
         <Route path="/offender-dashboard" element={<OffenderDashboard />} />
         <Route path="/admin-dashboard" element={<AdminDashboard/>}/>
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password/:uidb64/:token" element={<ResetPassword />} />
+        <Route path="/offender-forgot-password" element={<OffenderForgotPassword />} />
+        <Route path="/receipt" element= {<Receipt/>} />
+        <Route path="/payment-callback" element={<PaymentCallback/>} />
       
       </Routes>
     </BrowserRouter>

@@ -181,6 +181,19 @@ function OffenderLogin() {
           >
             Register your License
           </span>
+          <br />
+          <br/>
+          <span
+            onClick={() => navigate("/offender-forgot-password")}
+            style={{
+              color: brandGreen,
+              cursor: "pointer",
+              fontWeight: "bold",
+              textDecoration: "underline",
+            }}
+          >
+            Forgotten Password
+          </span>
         </p>
 
         <p style={{ marginTop: "15px", fontSize: "12px", color: "#888" }}>

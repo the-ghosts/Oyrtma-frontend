@@ -29,6 +29,9 @@ function CreateTicket() {
   const [evidenceImage, setEvidenceImage] = useState(null);
   const [evidenceVideo, setEvidenceVideo] = useState(null);
 
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
   useEffect(() => {
     const fetchDropdownData = async () => {
       const token = localStorage.getItem("access_token");
@@ -131,6 +134,31 @@ function CreateTicket() {
       setIsLoading(false);
     }
   };
+
+  const filteredOffenders = offenders.filter((person) => {
+    // Grab the plate from registered_vehicles (or fallback to license if no plate exists)
+    const plate =
+      person.registered_vehicles && person.registered_vehicles.length > 0
+        ? person.registered_vehicles[0]
+        : person.driver_license_number || "";
+
+    const name = person.driver_name || "Unknown Name";
+    const search = searchTerm.toLowerCase();
+
+    return (
+      plate.toLowerCase().includes(search) ||
+      name.toLowerCase().includes(search)
+    );
+  });
+
+  const duplicateOffender = offenders.find(person => {
+    const existingPlate = person.registered_vehicles && person.registered_vehicles.length > 0 
+      ? person.registered_vehicles[0] 
+      : (person.driver_license_number || "");
+      
+    // If the box isn't empty, check if the typed plate matches any existing plate
+    return plateNumber.trim() !== "" && existingPlate.toLowerCase() === plateNumber.trim().toLowerCase();
+  });
 
   return (
     <div
@@ -317,41 +345,115 @@ function CreateTicket() {
             </div>
 
             {!isNewOffender ? (
-              <select
-                value={selectedOffender}
-                onChange={(e) => setSelectedOffender(e.target.value)}
-                required={!isNewOffender}
+              <div
                 style={{
+                  position: "relative",
                   width: "100%",
-                  padding: "10px",
-                  fontSize: "16px",
-                  borderRadius: "5px",
-                  border: "1px solid #ccc",
-                  backgroundColor: "white",
+                  marginBottom: "15px",
                 }}
               >
-                <option value="">-- Choose an Offender --</option>
-                {offenders.map((person) => {
-                  //  Use License Number. If none, use their first Plate Number.
-                  const displayId =
-                    person.driver_license_number ||
-                    (person.registered_vehicles &&
-                    person.registered_vehicles.length > 0
-                      ? person.registered_vehicles[0]
-                      : "No ID");
+                <input
+                  type="text"
+                  placeholder="Search by Plate Number (e.g. OYO-123) or Name..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setIsDropdownOpen(true);
+                    setSelectedOffender(""); // Clear the hidden ID when they start typing
+                  }}
+                  onFocus={() => setIsDropdownOpen(true)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    fontSize: "16px",
+                    borderRadius: "5px",
+                    border: "1px solid #ccc",
+                    boxSizing: "border-box",
+                  }}
+                />
 
-                  // Use Driver Name. If none, say 'Unknown Name'.
-                  const displayName = person.driver_name
-                    ? person.driver_name
-                    : "Unknown Name";
+                {isDropdownOpen && (
+                  <ul
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      width: "100%",
+                      maxHeight: "250px",
+                      overflowY: "auto",
+                      backgroundColor: "white",
+                      border: "1px solid #ccc",
+                      borderRadius: "5px",
+                      boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                      listStyle: "none",
+                      padding: 0,
+                      margin: "5px 0 0 0",
+                      zIndex: 1000,
+                    }}
+                  >
+                    {filteredOffenders.length > 0 ? (
+                      filteredOffenders.map((person) => {
+                        // Display Plate Number first
+                        const displayPlate =
+                          person.registered_vehicles &&
+                          person.registered_vehicles.length > 0
+                            ? person.registered_vehicles[0]
+                            : person.driver_license_number || "NO PLATE";
+                        const displayName =
+                          person.driver_name || "Unknown Name";
 
-                  return (
-                    <option key={person.id} value={person.id}>
-                      {displayId} - {displayName}
-                    </option>
-                  );
-                })}
-              </select>
+                        return (
+                          <li
+                            key={person.id}
+                            onMouseDown={() => {
+                              setSelectedOffender(person.id);
+                              setSearchTerm(`${displayPlate} - ${displayName}`);
+                              setIsDropdownOpen(false);
+                            }}
+                            style={{
+                              padding: "12px",
+                              cursor: "pointer",
+                              borderBottom: "1px solid #eee",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                            onMouseOver={(e) =>
+                              (e.currentTarget.style.backgroundColor =
+                                "#e6f4ea")
+                            }
+                            onMouseOut={(e) =>
+                              (e.currentTarget.style.backgroundColor = "white")
+                            }
+                          >
+                            <span
+                              style={{ fontWeight: "bold", color: brandGreen }}
+                            >
+                              {displayPlate}
+                            </span>
+                            <span
+                              style={{ color: "#64748b", fontSize: "14px" }}
+                            >
+                              {displayName}
+                            </span>
+                          </li>
+                        );
+                      })
+                    ) : (
+                      <li
+                        style={{
+                          padding: "12px",
+                          color: "#94a3b8",
+                          textAlign: "center",
+                          backgroundColor: "#f8fafc",
+                        }}
+                      >
+                        No matching plate or driver found.
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
             ) : (
               <div
                 style={{
@@ -364,6 +466,7 @@ function CreateTicket() {
                   border: "1px dashed #ccc",
                 }}
               >
+              <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                 <input
                   type="text"
                   placeholder="License Plate Number (Required)"
@@ -374,9 +477,17 @@ function CreateTicket() {
                     padding: "10px",
                     fontSize: "16px",
                     borderRadius: "5px",
-                    border: "2px solid #333",
-                  }}
-                />
+                   border: isNewOffender && duplicateOffender ? `2px solid ${brandRed}` : "2px solid #333",
+                      backgroundColor: "white"
+                    }}
+                  />
+                  {/* NEW: Real-time Warning Message */}
+                  {isNewOffender && duplicateOffender && (
+                    <span style={{ color: brandRed, fontSize: "13px", fontWeight: "bold" }}>
+                      ⚠️ Plate already registered to {duplicateOffender.driver_name || "a driver"}. Please use "Select Existing".
+                    </span>
+                  )}
+                </div>
 
                 <input
                   type="text"
@@ -426,15 +537,15 @@ function CreateTicket() {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || (isNewOffender && !!duplicateOffender)}
             style={{
               padding: "15px",
               fontSize: "16px",
-              backgroundColor: isLoading ? "#80bd99" : brandGreen,
+              backgroundColor: isLoading || (isNewOffender && !!duplicateOffender) ? "#80bd99" : brandGreen,
               color: "white",
               border: "none",
               borderRadius: "5px",
-              cursor: isLoading ? "wait" : "pointer",
+             cursor: isLoading || (isNewOffender && !!duplicateOffender) ? "not-allowed" : "pointer",
               fontWeight: "bold",
               marginTop: "20px",
             }}
