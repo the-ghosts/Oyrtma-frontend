@@ -25,6 +25,24 @@ function AdminDashboard() {
   const [officersList, setOfficersList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // SMS Monitoring States
+  const [smsStats, setSmsStats] = useState({
+    total: 0,
+    sent: 0,
+    failed: 0,
+    pending: 0,
+    success_rate: "0%"
+  });
+  const [smsLogs, setSmsLogs] = useState([]);
+  const [smsLogsLoading, setSmsLogsLoading] = useState(false);
+  const [smsLogsError, setSmsLogsError] = useState("");
+  const [smsSearch, setSmsSearch] = useState("");
+  const [smsStatusFilter, setSmsStatusFilter] = useState("all");
+  const [isSmsModalOpen, setIsSmsModalOpen] = useState(false);
+  const [smsLogModal, setSmsLogModal] = useState(null);
+  const [smsPage, setSmsPage] = useState(1);
+  const smsPerPage = 10;
+
   // Modal States
   const [isOffenceModalOpen, setIsOffenceModalOpen] = useState(false);
   const [editingOffence, setEditingOffence] = useState(null);
@@ -118,6 +136,85 @@ function AdminDashboard() {
     localStorage.removeItem("refresh_token");
     navigate("/");
   };
+
+  // --- SMS MONITORING LOGIC ---
+  useEffect(() => {
+    if (activeTab === "sms_monitoring") {
+      fetchSmsData();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setSmsPage(1);
+  }, [smsSearch, smsStatusFilter]);
+
+  const fetchSmsData = async () => {
+    setSmsLogsLoading(true);
+    setSmsLogsError("");
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) return navigate("/");
+      const headers = { Authorization: `Bearer ${token}` };
+
+      // Fetch SMS statistics
+      const statsRes = await axios.get("http://127.0.0.1:8000/api/sms-logs/stats/", { headers });
+      setSmsStats(statsRes.data);
+
+      // Fetch SMS logs
+      const logsRes = await axios.get("http://127.0.0.1:8000/api/sms-logs/", { headers });
+      setSmsLogs(logsRes.data);
+    } catch (error) {
+      console.error("Error fetching SMS data:", error);
+      setSmsLogsError("Failed to fetch SMS logs or statistics.");
+    } finally {
+      setSmsLogsLoading(false);
+    }
+  };
+
+  const handleRetrySms = async (id) => {
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) return navigate("/");
+      const headers = { Authorization: `Bearer ${token}` };
+
+      showNotification("Queuing SMS retry task...", "success");
+      await axios.post(`http://127.0.0.1:8000/api/sms-logs/${id}/retry/`, {}, { headers });
+      showNotification("SMS retry task successfully queued!", "success");
+      
+      // Refresh data
+      fetchSmsData();
+      
+      // If modal is open for this log, close it or refresh it
+      if (smsLogModal && smsLogModal.id === id) {
+        setIsSmsModalOpen(false);
+        setSmsLogModal(null);
+      }
+    } catch (error) {
+      console.error("Error retrying SMS:", error);
+      const errorMsg = error.response?.data?.error || "Failed to retry SMS notification.";
+      showNotification(errorMsg, "error");
+    }
+  };
+
+  const filteredSmsLogs = smsLogs.filter((log) => {
+    // 1. Filter by status
+    if (smsStatusFilter !== "all" && log.status !== smsStatusFilter) {
+      return false;
+    }
+    // 2. Filter by search string
+    if (smsSearch) {
+      const searchLower = smsSearch.toLowerCase();
+      const phoneMatch = log.phone_number && log.phone_number.toLowerCase().includes(searchLower);
+      const refMatch = log.booking_reference && log.booking_reference.toLowerCase().includes(searchLower);
+      const nameMatch = log.driver_name && log.driver_name.toLowerCase().includes(searchLower);
+      const msgMatch = log.message && log.message.toLowerCase().includes(searchLower);
+      return phoneMatch || refMatch || nameMatch || msgMatch;
+    }
+    return true;
+  });
+
+  const totalSmsPages = Math.ceil(filteredSmsLogs.length / smsPerPage);
+  const displayedSmsLogs = filteredSmsLogs.slice((smsPage - 1) * smsPerPage, smsPage * smsPerPage);
 
   // --- OFFENCE LOGIC ---
   const openOffenceModal = (offence = null) => {
@@ -380,6 +477,21 @@ function AdminDashboard() {
           }}
         >
           Manage Officers
+        </button>
+        <button
+          onClick={() => setActiveTab("sms_monitoring")}
+          style={{
+            padding: "10px 20px",
+            backgroundColor: activeTab === "sms_monitoring" ? brandGreen : "white",
+            color: activeTab === "sms_monitoring" ? "white" : "#64748b",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer",
+            fontWeight: "bold",
+            boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+          }}
+        >
+          SMS Monitoring
         </button>
       </div>
 
@@ -1152,6 +1264,537 @@ function AdminDashboard() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeTab === "sms_monitoring" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* STATS OVERVIEW CARDS */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: "20px",
+              marginBottom: "10px",
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "20px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                borderLeft: "6px solid #475569",
+              }}
+            >
+              <p style={{ margin: "0 0 10px 0", color: "#64748b", fontWeight: "bold", fontSize: "14px" }}>
+                Total Messages
+              </p>
+              <h3 style={{ margin: 0, fontSize: "28px", color: "#1e293b" }}>{smsStats.total}</h3>
+            </div>
+            
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "20px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                borderLeft: `6px solid ${brandGreen}`,
+              }}
+            >
+              <p style={{ margin: "0 0 10px 0", color: "#64748b", fontWeight: "bold", fontSize: "14px" }}>
+                Successfully Sent
+              </p>
+              <h3 style={{ margin: 0, fontSize: "28px", color: brandGreen }}>{smsStats.sent}</h3>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "20px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                borderLeft: `6px solid ${brandRed}`,
+              }}
+            >
+              <p style={{ margin: "0 0 10px 0", color: "#64748b", fontWeight: "bold", fontSize: "14px" }}>
+                Failed Delivery
+              </p>
+              <h3 style={{ margin: 0, fontSize: "28px", color: brandRed }}>{smsStats.failed}</h3>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "20px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                borderLeft: "6px solid #d97706",
+              }}
+            >
+              <p style={{ margin: "0 0 10px 0", color: "#64748b", fontWeight: "bold", fontSize: "14px" }}>
+                Pending Resends
+              </p>
+              <h3 style={{ margin: 0, fontSize: "28px", color: "#d97706" }}>{smsStats.pending}</h3>
+            </div>
+
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "20px",
+                borderRadius: "10px",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                borderLeft: "6px solid #0284c7",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+              }}
+            >
+              <p style={{ margin: "0 0 5px 0", color: "#64748b", fontWeight: "bold", fontSize: "14px" }}>
+                Success Rate
+              </p>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "5px" }}>
+                <h3 style={{ margin: 0, fontSize: "28px", color: "#0284c7" }}>{smsStats.success_rate}</h3>
+              </div>
+            </div>
+          </div>
+
+          {/* SEARCH & FILTERS CONTROLS */}
+          <div
+            style={{
+              backgroundColor: "white",
+              padding: "15px 20px",
+              borderRadius: "10px",
+              boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "15px",
+            }}
+          >
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                type="text"
+                placeholder="Search phone, driver, ref..."
+                value={smsSearch}
+                onChange={(e) => setSmsSearch(e.target.value)}
+                style={{
+                  padding: "8px 15px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  width: "250px",
+                  outline: "none",
+                }}
+              />
+              
+              {/* STATUS FILTER PILLS */}
+              <div style={{ display: "flex", gap: "5px", border: "1px solid #cbd5e1", borderRadius: "6px", overflow: "hidden" }}>
+                {["all", "sent", "failed", "pending"].map((statusOption) => (
+                  <button
+                    key={statusOption}
+                    onClick={() => setSmsStatusFilter(statusOption)}
+                    style={{
+                      padding: "8px 15px",
+                      border: "none",
+                      backgroundColor: smsStatusFilter === statusOption ? brandGreen : "white",
+                      color: smsStatusFilter === statusOption ? "white" : "#475569",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                      fontWeight: "bold",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {statusOption}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={fetchSmsData}
+              disabled={smsLogsLoading}
+              style={{
+                padding: "8px 16px",
+                backgroundColor: "#f1f5f9",
+                color: "#1e293b",
+                border: "1px solid #cbd5e1",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: "13px",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+              }}
+            >
+              🔄 {smsLogsLoading ? "Refreshing..." : "Refresh Data"}
+            </button>
+          </div>
+
+          {/* LOGS TABLE CONTAINER */}
+          <div
+            style={{
+              backgroundColor: "white",
+              borderRadius: "10px",
+              boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+              overflow: "hidden",
+            }}
+          >
+            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+              <thead>
+                <tr style={{ backgroundColor: "#f8fafc", color: "#475569", borderBottom: "1px solid #e2e8f0" }}>
+                  <th style={{ padding: "16px 20px", fontWeight: "600", fontSize: "14px" }}>Recipient (Phone)</th>
+                  <th style={{ padding: "16px 20px", fontWeight: "600", fontSize: "14px" }}>Driver Name</th>
+                  <th style={{ padding: "16px 20px", fontWeight: "600", fontSize: "14px" }}>Fine Reference</th>
+                  <th style={{ padding: "16px 20px", fontWeight: "600", fontSize: "14px" }}>Message Snippet</th>
+                  <th style={{ padding: "16px 20px", fontWeight: "600", fontSize: "14px" }}>Delivery Status</th>
+                  <th style={{ padding: "16px 20px", fontWeight: "600", fontSize: "14px" }}>Timestamp</th>
+                  <th style={{ padding: "16px 20px", fontWeight: "600", fontSize: "14px", textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {smsLogsLoading ? (
+                  <tr>
+                    <td colSpan="7" style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                      Loading system SMS logs...
+                    </td>
+                  </tr>
+                ) : smsLogsError ? (
+                  <tr>
+                    <td colSpan="7" style={{ padding: "40px", textAlign: "center", color: brandRed, fontWeight: "bold" }}>
+                      {smsLogsError}
+                    </td>
+                  </tr>
+                ) : displayedSmsLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                      No matching SMS logs found.
+                    </td>
+                  </tr>
+                ) : (
+                  displayedSmsLogs.map((log) => {
+                    const statusColors = {
+                      sent: { bg: "#dcfce7", text: brandGreen },
+                      failed: { bg: "#fee2e2", text: brandRed },
+                      pending: { bg: "#fef3c7", text: "#d97706" }
+                    };
+                    const color = statusColors[log.status] || { bg: "#f1f5f9", text: "#64748b" };
+
+                    return (
+                      <tr key={log.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                        <td style={{ padding: "16px 20px", fontSize: "14px", fontWeight: "500", color: "#334155" }}>
+                          {log.phone_number}
+                        </td>
+                        <td style={{ padding: "16px 20px", fontSize: "14px", color: "#475569" }}>
+                          {log.driver_name || "Unknown"}
+                        </td>
+                        <td style={{ padding: "16px 20px", fontSize: "14px", color: "#475569", fontFamily: "monospace" }}>
+                          {log.booking_reference || "N/A"}
+                        </td>
+                        <td style={{ padding: "16px 20px", fontSize: "13px", color: "#64748b", maxWidth: "250px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {log.message}
+                        </td>
+                        <td style={{ padding: "16px 20px" }}>
+                          <span
+                            style={{
+                              backgroundColor: color.bg,
+                              color: color.text,
+                              padding: "4px 10px",
+                              borderRadius: "4px",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {log.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: "16px 20px", fontSize: "13px", color: "#64748b" }}>
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                        <td style={{ padding: "16px 20px", textAlign: "right" }}>
+                          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                            <button
+                              onClick={() => {
+                                setSmsLogModal(log);
+                                setIsSmsModalOpen(true);
+                              }}
+                              style={{
+                                padding: "6px 12px",
+                                backgroundColor: "#f1f5f9",
+                                color: "#1e293b",
+                                border: "1px solid #cbd5e1",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              Details
+                            </button>
+                            {log.status === "failed" && (
+                              <button
+                                onClick={() => handleRetrySms(log.id)}
+                                style={{
+                                  padding: "6px 12px",
+                                  backgroundColor: "#fff7ed",
+                                  color: brandRed,
+                                  border: `1px solid ${brandRed}`,
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                  fontSize: "12px",
+                                  fontWeight: "bold",
+                                }}
+                              >
+                                Retry
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+
+            {/* PAGINATION BAR */}
+            {totalSmsPages > 1 && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "15px 20px",
+                  borderTop: "1px solid #e2e8f0",
+                }}
+              >
+                <span style={{ fontSize: "13px", color: "#64748b" }}>
+                  Showing {(smsPage - 1) * smsPerPage + 1} to{" "}
+                  {Math.min(smsPage * smsPerPage, filteredSmsLogs.length)} of{" "}
+                  {filteredSmsLogs.length} logs
+                </span>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <button
+                    onClick={() => setSmsPage((p) => Math.max(1, p - 1))}
+                    disabled={smsPage === 1}
+                    style={{
+                      padding: "6px 12px",
+                      backgroundColor: smsPage === 1 ? "#f1f5f9" : "white",
+                      color: smsPage === 1 ? "#94a3b8" : "#334155",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "4px",
+                      cursor: smsPage === 1 ? "not-allowed" : "pointer",
+                      fontSize: "13px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Previous
+                  </button>
+                  <span style={{ fontSize: "13px", color: "#475569", fontWeight: "600" }}>
+                    Page {smsPage} of {totalSmsPages}
+                  </span>
+                  <button
+                    onClick={() => setSmsPage((p) => Math.min(totalSmsPages, p + 1))}
+                    disabled={smsPage === totalSmsPages}
+                    style={{
+                      padding: "6px 12px",
+                      backgroundColor: smsPage === totalSmsPages ? "#f1f5f9" : "white",
+                      color: smsPage === totalSmsPages ? "#94a3b8" : "#334155",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "4px",
+                      cursor: smsPage === totalSmsPages ? "not-allowed" : "pointer",
+                      fontSize: "13px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SMS DETAILS MODAL */}
+      {isSmsModalOpen && smsLogModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0, 0, 0, 0.4)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 2000,
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "600px",
+              overflow: "hidden",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              display: "flex",
+              flexDirection: "column",
+              maxHeight: "85vh",
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                backgroundColor: "#f8f9fa",
+                padding: "15px 20px",
+                borderBottom: "1px solid #eee",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <h3 style={{ margin: 0, color: "#333", fontSize: "16px" }}>
+                SMS Notification Audit Details
+              </h3>
+              <button
+                onClick={() => {
+                  setIsSmsModalOpen(false);
+                  setSmsLogModal(null);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  color: "#999",
+                }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "15px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+                <div>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: "bold" }}>
+                    Recipient Phone
+                  </span>
+                  <p style={{ margin: "2px 0 0 0", color: "#1e293b", fontWeight: "600" }}>{smsLogModal.phone_number}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: "bold" }}>
+                    Driver Name
+                  </span>
+                  <p style={{ margin: "2px 0 0 0", color: "#1e293b", fontWeight: "600" }}>{smsLogModal.driver_name || "Unknown"}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: "bold" }}>
+                    Fine Reference
+                  </span>
+                  <p style={{ margin: "2px 0 0 0", color: "#1e293b", fontFamily: "monospace", fontWeight: "600" }}>
+                    {smsLogModal.booking_reference || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: "bold" }}>
+                    Status
+                  </span>
+                  <div style={{ margin: "2px 0 0 0" }}>
+                    <span
+                      style={{
+                        backgroundColor: smsLogModal.status === "sent" ? "#dcfce7" : smsLogModal.status === "failed" ? "#fee2e2" : "#fef3c7",
+                        color: smsLogModal.status === "sent" ? brandGreen : smsLogModal.status === "failed" ? brandRed : "#d97706",
+                        padding: "2px 8px",
+                        borderRadius: "4px",
+                        fontSize: "11px",
+                        fontWeight: "bold",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {smsLogModal.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: "bold" }}>
+                  Message Text
+                </span>
+                <div style={{ marginTop: "4px", padding: "12px", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px", fontSize: "13px", color: "#334155", lineHeight: "1.5" }}>
+                  {smsLogModal.message}
+                </div>
+              </div>
+
+              {smsLogModal.error_message && (
+                <div>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", color: brandRed, fontWeight: "bold" }}>
+                    Error details
+                  </span>
+                  <div style={{ marginTop: "4px", padding: "12px", backgroundColor: "#fef2f2", border: `1px solid ${brandRed}`, borderRadius: "6px", fontSize: "13px", color: brandRed, fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                    {smsLogModal.error_message}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#94a3b8", fontWeight: "bold" }}>
+                  Raw Termii Gateway Response
+                </span>
+                <pre style={{ marginTop: "4px", padding: "12px", backgroundColor: "#0f172a", color: "#38bdf8", borderRadius: "6px", fontSize: "12px", fontFamily: "monospace", overflowX: "auto", margin: 0 }}>
+                  {smsLogModal.termii_response 
+                    ? JSON.stringify(smsLogModal.termii_response, null, 2) 
+                    : "No payload response stored."}
+                </pre>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: "15px 20px", borderTop: "1px solid #eee", display: "flex", justifyContent: "flex-end", gap: "10px", backgroundColor: "#f8f9fa" }}>
+              <button
+                onClick={() => {
+                  setIsSmsModalOpen(false);
+                  setSmsLogModal(null);
+                }}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#cbd5e1",
+                  color: "#334155",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                Close
+              </button>
+              {smsLogModal.status === "failed" && (
+                <button
+                  onClick={() => handleRetrySms(smsLogModal.id)}
+                  style={{
+                    padding: "8px 16px",
+                    backgroundColor: brandRed,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Retry Notification
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
