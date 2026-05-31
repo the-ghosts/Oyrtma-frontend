@@ -43,6 +43,39 @@ function AdminDashboard() {
   const [smsPage, setSmsPage] = useState(1);
   const smsPerPage = 10;
 
+  // Driver Registry States
+  const [drivers, setDrivers] = useState([]);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [driversError, setDriversError] = useState("");
+  const [driverSearch, setDriverSearch] = useState("");
+  const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
+  const [editingDriver, setEditingDriver] = useState(null);
+  const [driverForm, setDriverForm] = useState({
+    plate_number: "",
+    phone_number: "",
+    driver_name: "",
+    state: "Oyo",
+    license_number: "",
+    email: "",
+    vehicle_type: "",
+    is_active: true,
+  });
+  const [driverPage, setDriverPage] = useState(1);
+  const driversPerPage = 10;
+
+  // Citation Disputes States
+  const [adminDisputes, setAdminDisputes] = useState([]);
+  const [disputesLoading, setDisputesLoading] = useState(false);
+  const [disputesError, setDisputesError] = useState("");
+  const [disputesSearch, setDisputesSearch] = useState("");
+  const [disputesFilter, setDisputesFilter] = useState("all");
+  const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
+  const [selectedDispute, setSelectedDispute] = useState(null);
+  const [reviewComments, setReviewComments] = useState("");
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [disputesPage, setDisputesPage] = useState(1);
+  const disputesPerPage = 10;
+
   // Modal States
   const [isOffenceModalOpen, setIsOffenceModalOpen] = useState(false);
   const [editingOffence, setEditingOffence] = useState(null);
@@ -215,6 +248,205 @@ function AdminDashboard() {
 
   const totalSmsPages = Math.ceil(filteredSmsLogs.length / smsPerPage);
   const displayedSmsLogs = filteredSmsLogs.slice((smsPage - 1) * smsPerPage, smsPage * smsPerPage);
+
+  // --- CITATION DISPUTES LOGIC ---
+  useEffect(() => {
+    if (activeTab === "disputes") {
+      fetchAdminDisputes();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setDisputesPage(1);
+  }, [disputesSearch, disputesFilter]);
+
+  const fetchAdminDisputes = async () => {
+    setDisputesLoading(true);
+    setDisputesError("");
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) return navigate("/");
+      const headers = { Authorization: `Bearer ${token}` };
+      const res = await axios.get("http://127.0.0.1:8000/api/admin/disputes/", { headers });
+      setAdminDisputes(res.data);
+    } catch (error) {
+      console.error("Error fetching disputes:", error);
+      setDisputesError("Failed to fetch citizen disputes.");
+    } finally {
+      setDisputesLoading(false);
+    }
+  };
+
+  const reviewDispute = async (status) => {
+    if (!selectedDispute) return;
+    setIsReviewing(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) return navigate("/");
+      const headers = { Authorization: `Bearer ${token}` };
+      await axios.post(
+        `http://127.0.0.1:8000/api/admin/disputes/${selectedDispute.id}/review/`,
+        { status, review_comments: reviewComments },
+        { headers }
+      );
+      showNotification(`Dispute successfully ${status === 'Approved' ? 'Approved & Citation Waived' : 'Rejected'}.`);
+      setIsDisputeModalOpen(false);
+      setSelectedDispute(null);
+      setReviewComments("");
+      fetchAdminDisputes();
+      fetchAdminData(); // Reload admin dashboard stats and revenue!
+    } catch (err) {
+      console.error("Error reviewing dispute:", err);
+      showNotification("Failed to review dispute.", "error");
+    } finally {
+      setIsReviewing(false);
+    }
+  };
+
+  // Filter disputes
+  const filteredDisputes = adminDisputes.filter(disp => {
+    // 1. Status filter
+    if (disputesFilter !== "all" && disp.status !== disputesFilter) {
+      return false;
+    }
+    // 2. Search
+    if (disputesSearch) {
+      const searchLower = disputesSearch.toLowerCase();
+      const refMatch = disp.booking_reference && disp.booking_reference.toLowerCase().includes(searchLower);
+      const nameMatch = disp.citizen_name && disp.citizen_name.toLowerCase().includes(searchLower);
+      const reasonMatch = disp.reason && disp.reason.toLowerCase().includes(searchLower);
+      return refMatch || nameMatch || reasonMatch;
+    }
+    return true;
+  });
+
+  const totalDisputesPages = Math.ceil(filteredDisputes.length / disputesPerPage);
+  const displayedDisputes = filteredDisputes.slice((disputesPage - 1) * disputesPerPage, disputesPage * disputesPerPage);
+
+  // --- DRIVER REGISTRY LOGIC ---
+  useEffect(() => {
+    if (activeTab === "drivers") {
+      fetchDriversData();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setDriverPage(1);
+  }, [driverSearch]);
+
+  const fetchDriversData = async () => {
+    setDriversLoading(true);
+    setDriversError("");
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) return navigate("/");
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const driversRes = await axios.get("http://127.0.0.1:8000/api/drivers/", { headers });
+      setDrivers(driversRes.data);
+    } catch (error) {
+      console.error("Error fetching drivers:", error);
+      setDriversError("Failed to fetch driver registry records.");
+    } finally {
+      setDriversLoading(false);
+    }
+  };
+
+  const openDriverModal = (driver = null) => {
+    if (driver) {
+      setEditingDriver(driver);
+      setDriverForm({
+        plate_number: driver.plate_number || "",
+        phone_number: driver.phone_number || "",
+        driver_name: driver.driver_name || "",
+        state: driver.state || "Oyo",
+        license_number: driver.license_number || "",
+        email: driver.email || "",
+        vehicle_type: driver.vehicle_type || "",
+        is_active: driver.is_active !== undefined ? driver.is_active : true,
+      });
+    } else {
+      setEditingDriver(null);
+      setDriverForm({
+        plate_number: "",
+        phone_number: "",
+        driver_name: "",
+        state: "Oyo",
+        license_number: "",
+        email: "",
+        vehicle_type: "",
+        is_active: true,
+      });
+    }
+    setIsDriverModalOpen(true);
+  };
+
+  const saveDriver = async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem("access_token");
+    const headers = { Authorization: `Bearer ${token}` };
+
+    try {
+      if (editingDriver) {
+        await axios.put(
+          `http://127.0.0.1:8000/api/drivers/${editingDriver.id}/`,
+          driverForm,
+          { headers },
+        );
+        showNotification("Driver registry record updated successfully!", "success");
+      } else {
+        await axios.post(
+          "http://127.0.0.1:8000/api/drivers/",
+          driverForm,
+          { headers },
+        );
+        showNotification("New driver registry entry created!", "success");
+      }
+      setIsDriverModalOpen(false);
+      fetchDriversData();
+    } catch (error) {
+      console.error("Error saving driver:", error);
+      const errorMsg = error.response?.data
+        ? Object.entries(error.response.data)
+            .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+            .join(" | ")
+        : "Failed to save driver record.";
+      showNotification(errorMsg, "error");
+    }
+  };
+
+  const executeDeleteDriver = async (id) => {
+    if (!window.confirm("Are you sure you want to permanently delete this driver registry record?")) return;
+    try {
+      const token = localStorage.getItem("access_token");
+      const headers = { Authorization: `Bearer ${token}` };
+      await axios.delete(`http://127.0.0.1:8000/api/drivers/${id}/`, { headers });
+      showNotification("Driver record deleted from registry.", "success");
+      fetchDriversData();
+    } catch (error) {
+      showNotification("Failed to delete driver record.", "error");
+    }
+  };
+
+  const filteredDrivers = drivers.filter((driver) => {
+    if (driverSearch) {
+      const searchLower = driverSearch.toLowerCase();
+      return (
+        (driver.driver_name && driver.driver_name.toLowerCase().includes(searchLower)) ||
+        (driver.plate_number && driver.plate_number.toLowerCase().includes(searchLower)) ||
+        (driver.phone_number && driver.phone_number.toLowerCase().includes(searchLower)) ||
+        (driver.license_number && driver.license_number.toLowerCase().includes(searchLower)) ||
+        (driver.state && driver.state.toLowerCase().includes(searchLower))
+      );
+    }
+    return true;
+  });
+
+  const totalDriverPages = Math.ceil(filteredDrivers.length / driversPerPage);
+  const displayedDrivers = filteredDrivers.slice(
+    (driverPage - 1) * driversPerPage,
+    driverPage * driversPerPage
+  );
 
   // --- OFFENCE LOGIC ---
   const openOffenceModal = (offence = null) => {
@@ -493,6 +725,36 @@ function AdminDashboard() {
         >
           SMS Monitoring
         </button>
+        <button
+          onClick={() => setActiveTab("drivers")}
+          style={{
+            padding: "10px 20px",
+            backgroundColor: activeTab === "drivers" ? brandGreen : "white",
+            color: activeTab === "drivers" ? "white" : "#64748b",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer",
+            fontWeight: "bold",
+            boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+          }}
+        >
+          Driver Registry
+        </button>
+        <button
+          onClick={() => setActiveTab("disputes")}
+          style={{
+            padding: "10px 20px",
+            backgroundColor: activeTab === "disputes" ? brandGreen : "white",
+            color: activeTab === "disputes" ? "white" : "#64748b",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer",
+            fontWeight: "bold",
+            boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+          }}
+        >
+          Citation Disputes
+        </button>
       </div>
 
       {/* --- TAB 1: OVERVIEW DASHBOARD --- */}
@@ -684,6 +946,9 @@ function AdminDashboard() {
                     page-break-inside: avoid; 
                     break-inside: avoid; 
                 }
+                
+                /* Show print-only class elements */
+                .print-only { display: block !important; }
               }
             `}
           </style>
@@ -702,273 +967,343 @@ function AdminDashboard() {
             </button>
           </div>
 
-          <div id="printable-analytics">
-            {/* Revenue Growth Card */}
-            <div
-              style={{
-                backgroundColor: "white",
-                padding: "25px",
-                borderRadius: "10px",
-                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-                marginBottom: "20px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            ></div>
-            <div>
-              <h3 style={{ margin: "0 0 5px 0", color: "#1e293b" }}>
-                Monthly Revenue Performance
-              </h3>
-              <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
-                Collected fines comparing this month to last month.
-              </p>
+          <div id="printable-analytics" style={{ display: "flex", flexDirection: "column", gap: "25px" }}>
+            {/* Printable PDF Header (Only shows in printing) */}
+            <div style={{ display: "none" }} className="print-only">
+              <div style={{ display: "flex", alignItems: "center", gap: "15px", borderBottom: "3px solid #007A33", paddingBottom: "15px", marginBottom: "20px" }}>
+                <img src={oyrtmaLogo} alt="OYRTMA Logo" style={{ width: "80px" }} />
+                <div>
+                  <h1 style={{ margin: 0, color: "#1e293b", fontSize: "24px" }}>Oyo State Road Traffic Management Authority</h1>
+                  <p style={{ margin: "2px 0 0 0", color: "#64748b", fontSize: "14px", fontWeight: "bold" }}>Command Center - Statewide Enforcement & Revenue Analytics Report</p>
+                  <p style={{ margin: "2px 0 0 0", color: "#94a3b8", fontSize: "12px" }}>Generated on: {new Date().toLocaleString()} | Filter: {startDate || "All Time"} to {endDate || "Present"}</p>
+                </div>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: "30px", alignItems: "center" }}>
-              <div style={{ textAlign: "right" }}>
-                <p
-                  style={{
-                    margin: "0 0 5px 0",
-                    color: "#64748b",
-                    fontSize: "12px",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Last Month
-                </p>
-                <h3 style={{ margin: 0, color: "#94a3b8" }}>
-                  ₦{stats.last_month_revenue.toLocaleString()}
-                </h3>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <p
-                  style={{
-                    margin: "0 0 5px 0",
-                    color: brandGreen,
-                    fontSize: "12px",
-                    textTransform: "uppercase",
-                    fontWeight: "bold",
-                  }}
-                >
-                  This Month
-                </p>
-                <h2 style={{ margin: 0, color: brandGreen, fontSize: "28px" }}>
-                  ₦{stats.this_month_revenue.toLocaleString()}
-                </h2>
-              </div>
+
+            {/* TOP ROW: State Revenue Settlement & Comparison Charts */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))", gap: "20px" }}>
+              
+              {/* Chart 1: Conic Collection Rate Gauge */}
               <div
                 style={{
-                  backgroundColor:
-                    stats.revenue_growth >= 0 ? "#dcfce7" : "#fee2e2",
-                  color: stats.revenue_growth >= 0 ? brandGreen : brandRed,
-                  padding: "10px 15px",
-                  borderRadius: "8px",
-                  fontWeight: "bold",
+                  backgroundColor: "white",
+                  padding: "25px",
+                  borderRadius: "10px",
+                  boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
                   display: "flex",
                   alignItems: "center",
-                  gap: "5px",
+                  gap: "30px",
+                  minHeight: "180px",
                 }}
               >
-                {stats.revenue_growth >= 0 ? "▲" : "▼"}{" "}
-                {Math.abs(stats.revenue_growth)}%
+                {/* Conic Gauge */}
+                {(() => {
+                  const total = stats.total_revenue + stats.pending_revenue;
+                  const rate = total > 0 ? Math.round((stats.total_revenue / total) * 100) : 0;
+                  return (
+                    <div
+                      style={{
+                        width: "130px",
+                        height: "130px",
+                        borderRadius: "50%",
+                        background: `conic-gradient(${brandGreen} ${rate * 3.6}deg, #fee2e2 0deg)`,
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        boxShadow: "inset 0 0 10px rgba(0,0,0,0.05)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <div style={{ width: "100px", height: "100px", borderRadius: "50%", backgroundColor: "white", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+                        <span style={{ fontSize: "24px", fontWeight: "bold", color: "#1e293b" }}>{rate}%</span>
+                        <span style={{ fontSize: "10px", color: brandGreen, textTransform: "uppercase", fontWeight: "bold", letterSpacing: "1px" }}>Collected</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: "0 0 12px 0", color: "#1e293b", fontSize: "16px", fontWeight: "bold" }}>Revenue Settlement Ratio</h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#64748b" }}>🟢 Paid & Collected:</span>
+                      <strong style={{ color: brandGreen }}>₦{stats.total_revenue.toLocaleString()}</strong>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: "#64748b" }}>🔴 Outstanding / Unpaid:</span>
+                      <strong style={{ color: brandRed }}>₦{stats.pending_revenue.toLocaleString()}</strong>
+                    </div>
+                    <div style={{ height: "1px", backgroundColor: "#e2e8f0", margin: "4px 0" }}></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "14px" }}>
+                      <span style={{ color: "#1e293b" }}>Total Fined Volume:</span>
+                      <span style={{ color: "#3b82f6" }}>₦{(stats.total_revenue + stats.pending_revenue).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-              gap: "20px",
-            }}
-          >
-            {/* Top Crime Hotspots */}
-            <div
-              style={{
-                backgroundColor: "white",
-                padding: "25px",
-                borderRadius: "10px",
-                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-              }}
-            >
-              <h3
+              {/* Chart 2: Vertical Revenue Bar Chart (Last Month vs. This Month) */}
+              <div
                 style={{
-                  margin: "0 0 20px 0",
-                  color: "#1e293b",
-                  borderBottom: "2px solid #f1f5f9",
-                  paddingBottom: "10px",
+                  backgroundColor: "white",
+                  padding: "25px",
+                  borderRadius: "10px",
+                  boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: "180px",
                 }}
               >
-                📍 Top Crime Hotspots
-              </h3>
-              {stats.top_locations.length === 0 ? (
-                <p style={{ color: "#94a3b8" }}>No data available.</p>
-              ) : (
-                stats.top_locations.map((loc, idx) => (
-                  <div key={idx} style={{ marginBottom: "15px" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        marginBottom: "5px",
-                        fontSize: "14px",
-                      }}
-                    >
-                      <span style={{ fontWeight: "bold", color: "#334155" }}>
-                        {loc.location}
-                      </span>
-                      <span style={{ color: "#64748b", fontWeight: "bold" }}>
-                        {loc.count} tickets
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        backgroundColor: "#f1f5f9",
-                        borderRadius: "4px",
-                        height: "10px",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${(loc.count / getMaxValue(stats.top_locations)) * 100}%`,
-                          backgroundColor: brandRed,
-                          height: "100%",
-                          borderRadius: "4px",
-                          transition: "width 1s ease-in-out",
-                        }}
-                      ></div>
-                    </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "15px" }}>
+                  <div>
+                    <h3 style={{ margin: "0 0 4px 0", color: "#1e293b", fontSize: "16px", fontWeight: "bold" }}>Monthly Revenue Performance</h3>
+                    <p style={{ margin: 0, color: "#64748b", fontSize: "12px" }}>Comparative collected fines between reporting months.</p>
                   </div>
-                ))
-              )}
+                  <div
+                    style={{
+                      backgroundColor: stats.revenue_growth >= 0 ? "#dcfce7" : "#fee2e2",
+                      color: stats.revenue_growth >= 0 ? brandGreen : brandRed,
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      fontWeight: "bold",
+                      fontSize: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "3px",
+                    }}
+                  >
+                    {stats.revenue_growth >= 0 ? "▲" : "▼"} {Math.abs(stats.revenue_growth)}% Growth
+                  </div>
+                </div>
+
+                {/* Bars Area */}
+                <div style={{ display: "flex", flex: 1, gap: "40px", alignItems: "flex-end", justifyContent: "center", paddingBottom: "10px" }}>
+                  {(() => {
+                    const maxVal = Math.max(stats.this_month_revenue, stats.last_month_revenue, 1);
+                    const lastHeight = Math.max(10, Math.round((stats.last_month_revenue / maxVal) * 90));
+                    const thisHeight = Math.max(10, Math.round((stats.this_month_revenue / maxVal) * 90));
+                    return (
+                      <>
+                        {/* Last Month Bar */}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "11px", fontWeight: "bold", color: "#64748b" }}>₦{stats.last_month_revenue.toLocaleString()}</span>
+                          <div style={{ width: "50px", height: `${lastHeight}px`, backgroundColor: "#94a3b8", borderRadius: "6px 6px 0 0", transition: "height 0.8s ease-in-out" }}></div>
+                          <span style={{ fontSize: "12px", color: "#64748b", fontWeight: "bold" }}>Last Month</span>
+                        </div>
+
+                        {/* This Month Bar */}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "11px", fontWeight: "bold", color: brandGreen }}>₦{stats.this_month_revenue.toLocaleString()}</span>
+                          <div style={{ width: "50px", height: `${thisHeight}px`, backgroundColor: brandGreen, borderRadius: "6px 6px 0 0", transition: "height 0.8s ease-in-out", boxShadow: "0 4px 10px rgba(0, 122, 51, 0.2)" }}></div>
+                          <span style={{ fontSize: "12px", color: brandGreen, fontWeight: "bold" }}>This Month</span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
             </div>
 
-            {/* Top Performing Officers */}
+            {/* BOTTOM ROW: Distributions & Performance Scales */}
             <div
               style={{
-                backgroundColor: "white",
-                padding: "25px",
-                borderRadius: "10px",
-                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                gap: "20px",
               }}
             >
-              <h3
+              {/* Top Crime Hotspots */}
+              <div
                 style={{
-                  margin: "0 0 20px 0",
-                  color: "#1e293b",
-                  borderBottom: "2px solid #f1f5f9",
-                  paddingBottom: "10px",
+                  backgroundColor: "white",
+                  padding: "25px",
+                  borderRadius: "10px",
+                  boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
                 }}
               >
-                👮 Top Catch Rates (Officers)
-              </h3>
-              {stats.top_officers.length === 0 ? (
-                <p style={{ color: "#94a3b8" }}>No data available.</p>
-              ) : (
-                stats.top_officers.map((off, idx) => (
-                  <div key={idx} style={{ marginBottom: "15px" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        marginBottom: "5px",
-                        fontSize: "14px",
-                      }}
-                    >
-                      <span style={{ fontWeight: "bold", color: "#334155" }}>
-                        {off.officer__first_name} {off.officer__last_name}
-                      </span>
-                      <span style={{ color: "#64748b", fontWeight: "bold" }}>
-                        {off.count} apprehensions
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        backgroundColor: "#f1f5f9",
-                        borderRadius: "4px",
-                        height: "10px",
-                        overflow: "hidden",
-                      }}
-                    >
+                <h3
+                  style={{
+                    margin: "0 0 20px 0",
+                    color: "#1e293b",
+                    fontSize: "15px",
+                    fontWeight: "bold",
+                    borderBottom: "2px solid #f1f5f9",
+                    paddingBottom: "10px",
+                  }}
+                >
+                  📍 Top Traffic Crime Hotspots
+                </h3>
+                {stats.top_locations.length === 0 ? (
+                  <p style={{ color: "#94a3b8", fontSize: "13px", fontStyle: "italic" }}>No location stats available.</p>
+                ) : (
+                  stats.top_locations.map((loc, idx) => (
+                    <div key={idx} style={{ marginBottom: "15px" }}>
                       <div
                         style={{
-                          width: `${(off.count / getMaxValue(stats.top_officers)) * 100}%`,
-                          backgroundColor: "#3b82f6",
-                          height: "100%",
-                          borderRadius: "4px",
-                          transition: "width 1s ease-in-out",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: "5px",
+                          fontSize: "13px",
                         }}
-                      ></div>
+                      >
+                        <span style={{ fontWeight: "bold", color: "#334155" }}>
+                          {loc.location}
+                        </span>
+                        <span style={{ color: "#64748b", fontWeight: "bold" }}>
+                          {loc.count} tickets
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          width: "100%",
+                          backgroundColor: "#f1f5f9",
+                          borderRadius: "4px",
+                          height: "8px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${(loc.count / getMaxValue(stats.top_locations)) * 100}%`,
+                            backgroundColor: brandRed,
+                            height: "100%",
+                            borderRadius: "4px",
+                          }}
+                        ></div>
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
+                  ))
+                )}
+              </div>
 
-            {/* Most Frequent Offences */}
-            <div
-              style={{
-                backgroundColor: "white",
-                padding: "25px",
-                borderRadius: "10px",
-                boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
-              }}
-            >
-              <h3
+              {/* Top Performing Officers */}
+              <div
                 style={{
-                  margin: "0 0 20px 0",
-                  color: "#1e293b",
-                  borderBottom: "2px solid #f1f5f9",
-                  paddingBottom: "10px",
+                  backgroundColor: "white",
+                  padding: "25px",
+                  borderRadius: "10px",
+                  boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
                 }}
               >
-                📋 Most Frequent Violations
-              </h3>
-              {stats.top_offences.length === 0 ? (
-                <p style={{ color: "#94a3b8" }}>No data available.</p>
-              ) : (
-                stats.top_offences.map((violation, idx) => (
-                  <div key={idx} style={{ marginBottom: "15px" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        marginBottom: "5px",
-                        fontSize: "14px",
-                      }}
-                    >
-                      <span style={{ fontWeight: "bold", color: "#334155" }}>
-                        {violation.offence__name}
-                      </span>
-                      <span style={{ color: "#64748b", fontWeight: "bold" }}>
-                        {violation.count} occurrences
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        backgroundColor: "#f1f5f9",
-                        borderRadius: "4px",
-                        height: "10px",
-                        overflow: "hidden",
-                      }}
-                    >
+                <h3
+                  style={{
+                    margin: "0 0 20px 0",
+                    color: "#1e293b",
+                    fontSize: "15px",
+                    fontWeight: "bold",
+                    borderBottom: "2px solid #f1f5f9",
+                    paddingBottom: "10px",
+                  }}
+                >
+                  👮 Top Catch Rates (Officers)
+                </h3>
+                {stats.top_officers.length === 0 ? (
+                  <p style={{ color: "#94a3b8", fontSize: "13px", fontStyle: "italic" }}>No officer stats available.</p>
+                ) : (
+                  stats.top_officers.map((off, idx) => (
+                    <div key={idx} style={{ marginBottom: "15px" }}>
                       <div
                         style={{
-                          width: `${(violation.count / getMaxValue(stats.top_offences)) * 100}%`,
-                          backgroundColor: "#f59e0b",
-                          height: "100%",
-                          borderRadius: "4px",
-                          transition: "width 1s ease-in-out",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: "5px",
+                          fontSize: "13px",
                         }}
-                      ></div>
+                      >
+                        <span style={{ fontWeight: "bold", color: "#334155" }}>
+                          {off.officer__first_name} {off.officer__last_name}
+                        </span>
+                        <span style={{ color: "#64748b", fontWeight: "bold" }}>
+                          {off.count} apprehensions
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          width: "100%",
+                          backgroundColor: "#f1f5f9",
+                          borderRadius: "4px",
+                          height: "8px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${(off.count / getMaxValue(stats.top_officers)) * 100}%`,
+                            backgroundColor: "#3b82f6",
+                            height: "100%",
+                            borderRadius: "4px",
+                          }}
+                        ></div>
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
+
+              {/* Most Frequent Offences */}
+              <div
+                style={{
+                  backgroundColor: "white",
+                  padding: "25px",
+                  borderRadius: "10px",
+                  boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: "0 0 20px 0",
+                    color: "#1e293b",
+                    fontSize: "15px",
+                    fontWeight: "bold",
+                    borderBottom: "2px solid #f1f5f9",
+                    paddingBottom: "10px",
+                  }}
+                >
+                  📋 Most Frequent Violations
+                </h3>
+                {stats.top_offences.length === 0 ? (
+                  <p style={{ color: "#94a3b8", fontSize: "13px", fontStyle: "italic" }}>No offence stats available.</p>
+                ) : (
+                  stats.top_offences.map((violation, idx) => (
+                    <div key={idx} style={{ marginBottom: "15px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: "5px",
+                          fontSize: "13px",
+                        }}
+                      >
+                        <span style={{ fontWeight: "bold", color: "#334155", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", maxWidth: "70%" }} title={violation.offence__name}>
+                          {violation.offence__name}
+                        </span>
+                        <span style={{ color: "#64748b", fontWeight: "bold" }}>
+                          {violation.count} occurrences
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          width: "100%",
+                          backgroundColor: "#f1f5f9",
+                          borderRadius: "4px",
+                          height: "8px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${(violation.count / getMaxValue(stats.top_offences)) * 100}%`,
+                            backgroundColor: "#f59e0b",
+                            height: "100%",
+                            borderRadius: "4px",
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </>
@@ -1619,6 +1954,459 @@ function AdminDashboard() {
         </div>
       )}
 
+      {/* --- TAB 6: DRIVER REGISTRY --- */}
+      {activeTab === "drivers" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* SEARCH & FILTERS CONTROLS */}
+          <div
+            style={{
+              backgroundColor: "white",
+              padding: "15px 20px",
+              borderRadius: "10px",
+              boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "15px",
+            }}
+          >
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                type="text"
+                placeholder="Search plate, name, phone, state..."
+                value={driverSearch}
+                onChange={(e) => setDriverSearch(e.target.value)}
+                style={{
+                  padding: "8px 15px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  width: "300px",
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                onClick={fetchDriversData}
+                disabled={driversLoading}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#f1f5f9",
+                  color: "#1e293b",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                  fontSize: "13px",
+                }}
+              >
+                🔄 {driversLoading ? "Refreshing..." : "Refresh registry"}
+              </button>
+              <button
+                onClick={() => openDriverModal()}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: brandGreen,
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                  fontSize: "13px",
+                  boxShadow: "0 2px 5px rgba(0, 122, 51, 0.2)",
+                }}
+              >
+                + Add New Driver
+              </button>
+            </div>
+          </div>
+
+          {/* DRIVERS TABLE CONTAINER */}
+          <div
+            style={{
+              backgroundColor: "white",
+              borderRadius: "10px",
+              boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+              overflow: "hidden",
+            }}
+          >
+            {driversLoading ? (
+              <div style={{ padding: "40px", textAlign: "center", color: "#64748b", fontWeight: "bold" }}>
+                Loading Driver Registry...
+              </div>
+            ) : driversError ? (
+              <div style={{ padding: "40px", textAlign: "center", color: brandRed, fontWeight: "bold" }}>
+                {driversError}
+              </div>
+            ) : displayedDrivers.length === 0 ? (
+              <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+                No driver registry entries found.
+              </div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+                <thead>
+                  <tr style={{ backgroundColor: "#f8fafc", color: "#475569", borderBottom: "1px solid #e2e8f0" }}>
+                    <th style={{ padding: "16px 20px", fontSize: "13px", fontWeight: "bold" }}>Driver Name</th>
+                    <th style={{ padding: "16px 20px", fontSize: "13px", fontWeight: "bold" }}>Plate Number</th>
+                    <th style={{ padding: "16px 20px", fontSize: "13px", fontWeight: "bold" }}>License Number</th>
+                    <th style={{ padding: "16px 20px", fontSize: "13px", fontWeight: "bold" }}>State</th>
+                    <th style={{ padding: "16px 20px", fontSize: "13px", fontWeight: "bold" }}>Contact Info</th>
+                    <th style={{ padding: "16px 20px", fontSize: "13px", fontWeight: "bold" }}>Status</th>
+                    <th style={{ padding: "16px 20px", fontSize: "13px", fontWeight: "bold", textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedDrivers.map((driver) => (
+                    <tr key={driver.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <td style={{ padding: "16px 20px", fontSize: "14px", fontWeight: "bold", color: "#1e293b" }}>
+                        {driver.driver_name}
+                      </td>
+                      <td style={{ padding: "16px 20px", fontSize: "14px", fontWeight: "bold", color: brandGreen }}>
+                        {driver.plate_number}
+                      </td>
+                      <td style={{ padding: "16px 20px", fontSize: "14px", color: "#334155" }}>
+                        {driver.license_number || "N/A"}
+                      </td>
+                      <td style={{ padding: "16px 20px", fontSize: "14px", color: "#64748b" }}>
+                        {driver.state}
+                      </td>
+                      <td style={{ padding: "16px 20px", fontSize: "13px" }}>
+                        <div style={{ fontWeight: "600", color: "#334155" }}>{driver.phone_number}</div>
+                        <div style={{ color: "#64748b", fontSize: "12px" }}>{driver.email || "No Email"}</div>
+                      </td>
+                      <td style={{ padding: "16px 20px" }}>
+                        <span
+                          style={{
+                            backgroundColor: driver.is_active ? "#dcfce7" : "#fee2e2",
+                            color: driver.is_active ? brandGreen : brandRed,
+                            padding: "4px 10px",
+                            borderRadius: "4px",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {driver.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td style={{ padding: "16px 20px", textAlign: "right" }}>
+                        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                          <button
+                            onClick={() => openDriverModal(driver)}
+                            style={{
+                              padding: "6px 12px",
+                              backgroundColor: "#f1f5f9",
+                              color: "#1e293b",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => executeDeleteDriver(driver.id)}
+                            style={{
+                              padding: "6px 12px",
+                              backgroundColor: "#fee2e2",
+                              color: brandRed,
+                              border: "1px solid #fecaca",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* DRIVER PAGINATION BAR */}
+            {totalDriverPages > 1 && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "15px 20px",
+                  borderTop: "1px solid #e2e8f0",
+                }}
+              >
+                <span style={{ fontSize: "13px", color: "#64748b" }}>
+                  Showing {(driverPage - 1) * driversPerPage + 1} to{" "}
+                  {Math.min(driverPage * driversPerPage, filteredDrivers.length)} of{" "}
+                  {filteredDrivers.length} drivers
+                </span>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <button
+                    onClick={() => setDriverPage((p) => Math.max(1, p - 1))}
+                    disabled={driverPage === 1}
+                    style={{
+                      padding: "6px 12px",
+                      backgroundColor: driverPage === 1 ? "#f1f5f9" : "white",
+                      color: driverPage === 1 ? "#94a3b8" : "#334155",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "4px",
+                      cursor: driverPage === 1 ? "not-allowed" : "pointer",
+                      fontSize: "13px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Previous
+                  </button>
+                  <span style={{ fontSize: "13px", color: "#475569", fontWeight: "600" }}>
+                    Page {driverPage} of {totalDriverPages}
+                  </span>
+                  <button
+                    onClick={() => setDriverPage((p) => Math.min(totalDriverPages, p + 1))}
+                    disabled={driverPage === totalDriverPages}
+                    style={{
+                      padding: "6px 12px",
+                      backgroundColor: driverPage === totalDriverPages ? "#f1f5f9" : "white",
+                      color: driverPage === totalDriverPages ? "#94a3b8" : "#334155",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "4px",
+                      cursor: driverPage === totalDriverPages ? "not-allowed" : "pointer",
+                      fontSize: "13px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB 7: CITATION DISPUTES REVIEW CENTER --- */}
+      {activeTab === "disputes" && (
+        <div
+          style={{
+            backgroundColor: "white",
+            padding: "30px",
+            borderRadius: "10px",
+            boxShadow: "0 2px 5px rgba(0,0,0,0.05)",
+            marginBottom: "30px",
+          }}
+        >
+          {/* Section Header */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderBottom: "1px solid #f1f5f9",
+              paddingBottom: "15px",
+              marginBottom: "20px",
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0, color: "#1e293b", fontSize: "20px", fontWeight: "bold" }}>
+                Citizen Citation Disputes & Appeals
+              </h2>
+              <p style={{ margin: "4px 0 0 0", color: "#64748b", fontSize: "14px" }}>
+                Review, approve, or reject appeals filed by Oyo State citizens regarding traffic citations.
+              </p>
+            </div>
+          </div>
+
+          {/* Search & Filter Bar */}
+          <div
+            style={{
+              display: "flex",
+              gap: "15px",
+              marginBottom: "20px",
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: "250px", position: "relative" }}>
+              <input
+                type="text"
+                placeholder="Search disputes by Ticket Ref, Citizen Name, Reason..."
+                value={disputesSearch}
+                onChange={(e) => setDisputesSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px 10px 35px",
+                  borderRadius: "6px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "14px",
+                }}
+              />
+              <span style={{ position: "absolute", left: "12px", top: "11px", color: "#94a3b8" }}>🔍</span>
+            </div>
+
+            <div style={{ width: "200px" }}>
+              <select
+                value={disputesFilter}
+                onChange={(e) => setDisputesFilter(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: "6px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "14px",
+                  backgroundColor: "white",
+                }}
+              >
+                <option value="all">All Statuses</option>
+                <option value="Pending">Pending Review</option>
+                <option value="Approved">Approved (Waived)</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Table Container */}
+          {disputesLoading ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#64748b" }}>
+              Loading disputes registry data...
+            </div>
+          ) : disputesError ? (
+            <div style={{ padding: "30px", backgroundColor: "#fef2f2", color: brandRed, borderRadius: "6px", fontSize: "14px", fontWeight: "bold" }}>
+              ⚠️ {disputesError}
+            </div>
+          ) : filteredDisputes.length === 0 ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#94a3b8", fontStyle: "italic" }}>
+              No disputes matching the selected filters.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                <thead>
+                  <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    <th style={{ padding: "12px 20px", textAlign: "left", fontSize: "13px", color: "#475569", fontWeight: "bold", width: "120px" }}>Dispute ID</th>
+                    <th style={{ padding: "12px 20px", textAlign: "left", fontSize: "13px", color: "#475569", fontWeight: "bold" }}>Citizen Details</th>
+                    <th style={{ padding: "12px 20px", textAlign: "left", fontSize: "13px", color: "#475569", fontWeight: "bold" }}>Ticket Ref / Plate</th>
+                    <th style={{ padding: "12px 20px", textAlign: "left", fontSize: "13px", color: "#475569", fontWeight: "bold" }}>Reason</th>
+                    <th style={{ padding: "12px 20px", textAlign: "center", fontSize: "13px", color: "#475569", fontWeight: "bold", width: "120px" }}>Status</th>
+                    <th style={{ padding: "12px 20px", textAlign: "left", fontSize: "13px", color: "#475569", fontWeight: "bold" }}>Submitted At</th>
+                    <th style={{ padding: "12px 20px", textAlign: "right", fontSize: "13px", color: "#475569", fontWeight: "bold", width: "130px" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedDisputes.map((disp) => (
+                    <tr key={disp.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <td style={{ padding: "16px 20px", fontSize: "14px", fontWeight: "bold", color: "#1e293b" }}>#DISP-{disp.id}</td>
+                      <td style={{ padding: "16px 20px" }}>
+                        <div style={{ fontWeight: "bold", color: "#334155", fontSize: "14px" }}>{disp.citizen_name}</div>
+                      </td>
+                      <td style={{ padding: "16px 20px" }}>
+                        <div style={{ color: "#334155", fontSize: "14px", fontWeight: "500" }}>{disp.booking_reference}</div>
+                        <span style={{ fontSize: "11px", color: brandGreen, backgroundColor: "#e6f4ea", padding: "2px 6px", borderRadius: "4px", fontWeight: "bold", marginTop: "2px", display: "inline-block" }}>
+                          {disp.plate_number}
+                        </span>
+                      </td>
+                      <td style={{ padding: "16px 20px" }}>
+                        <div style={{ color: "#334155", fontSize: "14px", fontWeight: "bold" }}>{disp.reason}</div>
+                        <div style={{ fontSize: "12px", color: "#64748b", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap", maxWidth: "200px" }} title={disp.description}>
+                          "{disp.description}"
+                        </div>
+                      </td>
+                      <td style={{ padding: "16px 20px", textAlign: "center" }}>
+                        <span
+                          style={{
+                            backgroundColor: disp.status === 'Approved' ? "#e6f4ea" : disp.status === 'Rejected' ? "#fce8e6" : "#fef3c7",
+                            color: disp.status === 'Approved' ? brandGreen : disp.status === 'Rejected' ? brandRed : "#b45309",
+                            padding: "4px 10px",
+                            borderRadius: "15px",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                            display: "inline-block",
+                          }}
+                        >
+                          {disp.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: "16px 20px", fontSize: "13px", color: "#64748b" }}>
+                        {new Date(disp.submitted_at).toLocaleString()}
+                      </td>
+                      <td style={{ padding: "16px 20px", textAlign: "right" }}>
+                        <button
+                          onClick={() => {
+                            setSelectedDispute(disp);
+                            setReviewComments(disp.review_comments || "");
+                            setIsDisputeModalOpen(true);
+                          }}
+                          style={{
+                            padding: "6px 12px",
+                            backgroundColor: brandGreen,
+                            color: "white",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {disp.status === "Pending" ? "Review Case" : "View Review"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Pagination controls */}
+              {totalDisputesPages > 1 && (
+                <div style={{ padding: "15px 20px", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "#f8fafc" }}>
+                  <span style={{ fontSize: "13px", color: "#64748b" }}>
+                    Showing page <strong>{disputesPage}</strong> of <strong>{totalDisputesPages}</strong>
+                  </span>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      onClick={() => setDisputesPage(prev => Math.max(prev - 1, 1))}
+                      disabled={disputesPage === 1}
+                      style={{
+                        padding: "6px 12px",
+                        backgroundColor: disputesPage === 1 ? "#f1f5f9" : "white",
+                        color: disputesPage === 1 ? "#94a3b8" : "#334155",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "4px",
+                        cursor: disputesPage === 1 ? "not-allowed" : "pointer",
+                        fontSize: "13px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setDisputesPage(prev => Math.min(prev + 1, totalDisputesPages))}
+                      disabled={disputesPage === totalDisputesPages}
+                      style={{
+                        padding: "6px 12px",
+                        backgroundColor: disputesPage === totalDisputesPages ? "#f1f5f9" : "white",
+                        color: disputesPage === totalDisputesPages ? "#94a3b8" : "#334155",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "4px",
+                        cursor: disputesPage === totalDisputesPages ? "not-allowed" : "pointer",
+                        fontSize: "13px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* SMS DETAILS MODAL */}
       {isSmsModalOpen && smsLogModal && (
         <div
@@ -1794,6 +2582,196 @@ function AdminDashboard() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {isDriverModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0, 0, 0, 0.4)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "500px",
+              overflow: "hidden",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "#f8f9fa",
+                padding: "15px 20px",
+                borderBottom: "1px solid #eee",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <h3 style={{ margin: 0, color: "#333" }}>
+                {editingDriver ? "Edit Driver Registry Record" : "Add New Driver Entry"}
+              </h3>
+              <button
+                onClick={() => setIsDriverModalOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  color: "#999",
+                }}
+              >
+                &times;
+              </button>
+            </div>
+            <form onSubmit={saveDriver} style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "15px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Plate Number *</label>
+                  <input
+                    type="text"
+                    required
+                    disabled={!!editingDriver} // Don't allow editing plate number directly as it is unique key
+                    value={driverForm.plate_number}
+                    onChange={(e) => setDriverForm({ ...driverForm, plate_number: e.target.value.toUpperCase() })}
+                    placeholder="e.g. OY-123-AB"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Driver Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={driverForm.driver_name}
+                    onChange={(e) => setDriverForm({ ...driverForm, driver_name: e.target.value })}
+                    placeholder="e.g. Kolawole Alabi"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Phone Number *</label>
+                  <input
+                    type="text"
+                    required
+                    value={driverForm.phone_number}
+                    onChange={(e) => setDriverForm({ ...driverForm, phone_number: e.target.value })}
+                    placeholder="e.g. 09012345678"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>State *</label>
+                  <input
+                    type="text"
+                    required
+                    value={driverForm.state}
+                    onChange={(e) => setDriverForm({ ...driverForm, state: e.target.value })}
+                    placeholder="e.g. Oyo"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>License Number</label>
+                  <input
+                    type="text"
+                    value={driverForm.license_number}
+                    onChange={(e) => setDriverForm({ ...driverForm, license_number: e.target.value })}
+                    placeholder="e.g. DL/OY/123456"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Email</label>
+                  <input
+                    type="email"
+                    value={driverForm.email}
+                    onChange={(e) => setDriverForm({ ...driverForm, email: e.target.value })}
+                    placeholder="e.g. driver@email.com"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Vehicle Type / Model</label>
+                <input
+                  type="text"
+                  value={driverForm.vehicle_type}
+                  onChange={(e) => setDriverForm({ ...driverForm, vehicle_type: e.target.value })}
+                  placeholder="e.g. Toyota Camry"
+                  style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "5px" }}>
+                <input
+                  type="checkbox"
+                  id="driver_is_active"
+                  checked={driverForm.is_active}
+                  onChange={(e) => setDriverForm({ ...driverForm, is_active: e.target.checked })}
+                  style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                />
+                <label htmlFor="driver_is_active" style={{ cursor: "pointer", fontWeight: "bold", fontSize: "13px" }}>
+                  Record Active (Receives SMS)
+                </label>
+              </div>
+
+              <div style={{ display: "flex", justifySelf: "flex-end", gap: "10px", borderTop: "1px solid #eee", paddingTop: "15px", marginTop: "10px", width: "100%" }}>
+                <button
+                  type="button"
+                  onClick={() => setIsDriverModalOpen(false)}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    backgroundColor: "#f1f5f9",
+                    color: "#475569",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    backgroundColor: brandGreen,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Save Entry
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2390,6 +3368,160 @@ function AdminDashboard() {
               >
                 Yes, Remove
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CITIZEN DISPUTE APPEAL REVIEW MODAL */}
+      {isDisputeModalOpen && selectedDispute && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0, 0, 0, 0.4)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1200,
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "600px",
+              overflow: "hidden",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              display: "flex",
+              flexDirection: "column",
+              maxHeight: "85vh",
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ padding: "20px", borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0, color: "#1e293b", fontWeight: "bold" }}>
+                Review Citation Dispute #{selectedDispute.id}
+              </h3>
+              <button
+                onClick={() => {
+                  setIsDisputeModalOpen(false);
+                  setSelectedDispute(null);
+                }}
+                style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#94a3b8" }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "15px" }}>
+              {/* Citation info grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", backgroundColor: "#f8fafc", padding: "15px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+                <div>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#64748b", fontWeight: "bold" }}>Citizen Name</span>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "14px", fontWeight: "bold", color: "#1e293b" }}>{selectedDispute.citizen_name}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#64748b", fontWeight: "bold" }}>Vehicle Plate</span>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "14px", fontWeight: "bold", color: brandGreen }}>{selectedDispute.plate_number}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#64748b", fontWeight: "bold" }}>Ticket Reference</span>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "14px", fontWeight: "bold", color: "#1e293b" }}>{selectedDispute.booking_reference}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#64748b", fontWeight: "bold" }}>Fine Amount</span>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "14px", fontWeight: "bold", color: brandRed }}>₦{parseFloat(selectedDispute.amount_due).toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div>
+                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#64748b", fontWeight: "bold" }}>Dispute Reason</span>
+                <p style={{ margin: "2px 0 0 0", fontSize: "14px", fontWeight: "bold", color: "#1e293b" }}>{selectedDispute.reason}</p>
+              </div>
+
+              <div>
+                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "#64748b", fontWeight: "bold" }}>Citizen Explanation</span>
+                <div style={{ marginTop: "4px", padding: "12px", backgroundColor: "#f1f5f9", borderLeft: `4px solid ${brandGreen}`, borderRadius: "4px", fontSize: "13px", color: "#334155", lineHeight: "1.5" }}>
+                  "{selectedDispute.description}"
+                </div>
+              </div>
+
+              <div style={{ borderTop: "1px solid #eee", paddingTop: "15px" }}>
+                <label style={{ display: "block", fontSize: "13px", fontWeight: "bold", color: "#475569", marginBottom: "6px" }}>Administrative Review Comments</label>
+                <textarea
+                  value={reviewComments}
+                  onChange={(e) => setReviewComments(e.target.value)}
+                  disabled={selectedDispute.status !== "Pending"}
+                  placeholder={selectedDispute.status === "Pending" ? "Specify the findings, checks made, or administrative reason for approval/rejection..." : "No reviewer comments provided."}
+                  rows="3"
+                  style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #cbd5e1", fontSize: "14px", fontFamily: "inherit" }}
+                ></textarea>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: "15px 20px", borderTop: "1px solid #eee", display: "flex", justifyContent: "flex-end", gap: "10px", backgroundColor: "#f8f9fa" }}>
+              <button
+                onClick={() => {
+                  setIsDisputeModalOpen(false);
+                  setSelectedDispute(null);
+                }}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#cbd5e1",
+                  color: "#334155",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                Close
+              </button>
+              {selectedDispute.status === "Pending" && (
+                <>
+                  <button
+                    onClick={() => reviewDispute("Rejected")}
+                    disabled={isReviewing}
+                    style={{
+                      padding: "8px 16px",
+                      backgroundColor: brandRed,
+                      color: "white",
+                      border: "none",
+                      borderRadius: "5px",
+                      cursor: isReviewing ? "not-allowed" : "pointer",
+                      fontWeight: "bold",
+                      opacity: isReviewing ? 0.6 : 1,
+                    }}
+                  >
+                    Reject Appeal
+                  </button>
+                  <button
+                    onClick={() => reviewDispute("Approved")}
+                    disabled={isReviewing}
+                    style={{
+                      padding: "8px 16px",
+                      backgroundColor: brandGreen,
+                      color: "white",
+                      border: "none",
+                      borderRadius: "5px",
+                      cursor: isReviewing ? "not-allowed" : "pointer",
+                      fontWeight: "bold",
+                      opacity: isReviewing ? 0.6 : 1,
+                    }}
+                  >
+                    Approve & Waive Fine
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
