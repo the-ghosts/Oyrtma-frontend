@@ -86,6 +86,19 @@ function AdminDashboard() {
     fine_amount: "",
   });
   const [selectedOfficer, setSelectedOfficer] = useState(null);
+  
+  // Officer Registration States
+  const [isOfficerFormModalOpen, setIsOfficerFormModalOpen] = useState(false);
+  const [officerRegisterForm, setOfficerRegisterForm] = useState({
+    username: "",
+    email: "",
+    firstName: "",
+    lastName: "",
+    rank: "",
+    password: "",
+    autoGeneratePassword: true,
+  });
+  const [isRegisteringOfficer, setIsRegisteringOfficer] = useState(false);
 
   // Custom UI States
   const [notification, setNotification] = useState({
@@ -551,6 +564,55 @@ function AdminDashboard() {
       showNotification("Failed to remove user.", "error");
     } finally {
       setOfficerDeleteId(null);
+    }
+  };
+
+  const handleAddOfficerSubmit = async (e) => {
+    e.preventDefault();
+    setIsRegisteringOfficer(true);
+    const token = localStorage.getItem("access_token");
+    const headers = { Authorization: `Bearer ${token}` };
+
+    const payload = {
+      username: officerRegisterForm.username,
+      email: officerRegisterForm.email,
+      first_name: `${officerRegisterForm.rank} ${officerRegisterForm.firstName}`,
+      last_name: officerRegisterForm.lastName,
+    };
+
+    if (!officerRegisterForm.autoGeneratePassword) {
+      payload.password = officerRegisterForm.password;
+    }
+
+    try {
+      const response = await axios.post("http://127.0.0.1:8000/api/admin/officers/", payload, { headers });
+      
+      const pwdInfo = response.data.generated_password 
+        ? ` (Password: ${response.data.generated_password})` 
+        : "";
+      showNotification(`Officer registered successfully!${pwdInfo}`, "success");
+      setIsOfficerFormModalOpen(false);
+      
+      // Reset form
+      setOfficerRegisterForm({
+        username: "",
+        email: "",
+        firstName: "",
+        lastName: "",
+        rank: "",
+        password: "",
+        autoGeneratePassword: true,
+      });
+
+      // Refresh officers list
+      const officersRes = await axios.get("http://127.0.0.1:8000/api/admin/officers/", { headers });
+      setOfficersList(officersRes.data);
+    } catch (error) {
+      console.error("Error creating officer:", error);
+      const errorMsg = error.response?.data?.error || "Failed to create officer account.";
+      showNotification(errorMsg, "error");
+    } finally {
+      setIsRegisteringOfficer(false);
     }
   };
 
@@ -1474,6 +1536,20 @@ function AdminDashboard() {
             <h3 style={{ margin: 0, color: "#1e293b" }}>
               Field Officer Requests & Roster
             </h3>
+            <button
+              onClick={() => setIsOfficerFormModalOpen(true)}
+              style={{
+                padding: "8px 15px",
+                backgroundColor: brandGreen,
+                color: "white",
+                border: "none",
+                borderRadius: "5px",
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}
+            >
+              + Add Officer
+            </button>
           </div>
           <table
             style={{
@@ -2983,6 +3059,201 @@ function AdminDashboard() {
                   }}
                 >
                   Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isOfficerFormModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0, 0, 0, 0.4)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "500px",
+              overflow: "hidden",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "#f8f9fa",
+                padding: "15px 20px",
+                borderBottom: "1px solid #eee",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <h3 style={{ margin: 0, color: "#333" }}>
+                Register New Field Officer
+              </h3>
+              <button
+                onClick={() => setIsOfficerFormModalOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  color: "#999",
+                }}
+              >
+                &times;
+              </button>
+            </div>
+            <form onSubmit={handleAddOfficerSubmit} style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "15px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={officerRegisterForm.firstName}
+                    onChange={(e) => setOfficerRegisterForm({ ...officerRegisterForm, firstName: e.target.value })}
+                    placeholder="e.g. John"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc", boxSizing: "border-box" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={officerRegisterForm.lastName}
+                    onChange={(e) => setOfficerRegisterForm({ ...officerRegisterForm, lastName: e.target.value })}
+                    placeholder="e.g. Doe"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Official Rank *</label>
+                  <select
+                    required
+                    value={officerRegisterForm.rank}
+                    onChange={(e) => setOfficerRegisterForm({ ...officerRegisterForm, rank: e.target.value })}
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc", backgroundColor: "white", boxSizing: "border-box" }}
+                  >
+                    <option value="">-- Select Rank --</option>
+                    <option value="Commander">Commander</option>
+                    <option value="Route Commander">Route Commander</option>
+                    <option value="Traffic Officer">Traffic Officer</option>
+                    <option value="Marshal">Marshal</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Staff ID Number *</label>
+                  <input
+                    type="text"
+                    required
+                    value={officerRegisterForm.username}
+                    onChange={(e) => setOfficerRegisterForm({ ...officerRegisterForm, username: e.target.value })}
+                    placeholder="e.g. OYR-12345"
+                    style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Official Email Address *</label>
+                <input
+                  type="email"
+                  required
+                  value={officerRegisterForm.email}
+                  onChange={(e) => setOfficerRegisterForm({ ...officerRegisterForm, email: e.target.value })}
+                  placeholder="e.g. officer@oyrtma.gov.ng"
+                  style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div style={{ backgroundColor: "#f8fafc", padding: "12px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <input
+                    type="checkbox"
+                    id="auto_generate_pwd"
+                    checked={officerRegisterForm.autoGeneratePassword}
+                    onChange={(e) => setOfficerRegisterForm({ ...officerRegisterForm, autoGeneratePassword: e.target.checked })}
+                    style={{ cursor: "pointer", width: "16px", height: "16px" }}
+                  />
+                  <label htmlFor="auto_generate_pwd" style={{ cursor: "pointer", fontWeight: "bold", fontSize: "13px", color: "#334155" }}>
+                    Auto-generate secure password
+                  </label>
+                </div>
+
+                {!officerRegisterForm.autoGeneratePassword && (
+                  <div style={{ marginTop: "12px" }}>
+                    <label style={{ display: "block", marginBottom: "5px", fontWeight: "bold", fontSize: "13px" }}>Define Password *</label>
+                    <input
+                      type="password"
+                      required
+                      value={officerRegisterForm.password}
+                      onChange={(e) => setOfficerRegisterForm({ ...officerRegisterForm, password: e.target.value })}
+                      placeholder="Enter a secure password"
+                      style={{ width: "100%", padding: "10px", borderRadius: "5px", border: "1px solid #ccc", boxSizing: "border-box" }}
+                    />
+                  </div>
+                )}
+
+                {officerRegisterForm.autoGeneratePassword && (
+                  <p style={{ margin: "8px 0 0 0", fontSize: "11px", color: "#64748b", fontStyle: "italic" }}>
+                    System will automatically generate an 8-character password and send it to the officer's email.
+                  </p>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", borderTop: "1px solid #eee", paddingTop: "15px", marginTop: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setIsOfficerFormModalOpen(false)}
+                  disabled={isRegisteringOfficer}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    backgroundColor: "#f1f5f9",
+                    color: "#475569",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRegisteringOfficer}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    backgroundColor: brandGreen,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: isRegisteringOfficer ? "wait" : "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {isRegisteringOfficer ? "Registering..." : "Create Officer"}
                 </button>
               </div>
             </form>

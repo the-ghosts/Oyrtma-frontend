@@ -167,18 +167,8 @@ function Login() {
           </span>
         </p>
 
-        <p style={{ marginTop: "15px", fontSize: "13px", color: "#888" }}>
-          OYRTMA Personnel?{" "}
-          <span
-            onClick={() => navigate("/signup")}
-            style={{
-              color: "#0056b3",
-              cursor: "pointer",
-              textDecoration: "underline",
-            }}
-          >
-            Request Official Access
-          </span>
+        <p style={{ marginTop: "15px", fontSize: "13px", color: "#888", lineHeight: "1.4" }}>
+          OYRTMA Personnel: Accounts are created by System Administrators. Please contact HQ for your login credentials.
         </p>
       </div>
     </div>
