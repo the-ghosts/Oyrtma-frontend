@@ -100,6 +100,13 @@ function AdminDashboard() {
   });
   const [isRegisteringOfficer, setIsRegisteringOfficer] = useState(false);
 
+  // Officer Bulk Import States
+  const [isBulkImportOpen, setIsBulkImportModalOpen] = useState(false);
+  const [bulkImportFile, setBulkImportFile] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [importError, setImportError] = useState("");
+
   // Custom UI States
   const [notification, setNotification] = useState({
     show: false,
@@ -613,6 +620,56 @@ function AdminDashboard() {
       showNotification(errorMsg, "error");
     } finally {
       setIsRegisteringOfficer(false);
+    }
+  };
+
+  const handleBulkImportSubmit = async (e) => {
+    e.preventDefault();
+    if (!bulkImportFile) return;
+
+    setIsImporting(true);
+    setImportError("");
+    setImportResult(null);
+
+    const token = localStorage.getItem("access_token");
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "multipart/form-data",
+    };
+
+    const formData = new FormData();
+    formData.append("file", bulkImportFile);
+
+    try {
+      const response = await axios.post(
+        "http://127.0.0.1:8000/api/admin/officers/bulk-import/",
+        formData,
+        { headers }
+      );
+      
+      setImportResult(response.data);
+      showNotification("Officer bulk import completed!", "success");
+      
+      // Refresh officers list
+      const officersRes = await axios.get(
+        "http://127.0.0.1:8000/api/admin/officers/",
+        { headers }
+      );
+      setOfficersList(officersRes.data);
+    } catch (error) {
+      console.error("Bulk import failed:", error);
+      let errorMsg = "Failed to run bulk import.";
+      
+      if (error.response?.data?.error) {
+        errorMsg = error.response.data.error;
+      } else if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      }
+      
+      setImportError(errorMsg);
+      showNotification(errorMsg, "error");
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -1536,20 +1593,36 @@ function AdminDashboard() {
             <h3 style={{ margin: 0, color: "#1e293b" }}>
               Field Officer Requests & Roster
             </h3>
-            <button
-              onClick={() => setIsOfficerFormModalOpen(true)}
-              style={{
-                padding: "8px 15px",
-                backgroundColor: brandGreen,
-                color: "white",
-                border: "none",
-                borderRadius: "5px",
-                cursor: "pointer",
-                fontWeight: "bold",
-              }}
-            >
-              + Add Officer
-            </button>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                onClick={() => setIsBulkImportModalOpen(true)}
+                style={{
+                  padding: "8px 15px",
+                  backgroundColor: "#3b82f6",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                📥 Import Excel / CSV
+              </button>
+              <button
+                onClick={() => setIsOfficerFormModalOpen(true)}
+                style={{
+                  padding: "8px 15px",
+                  backgroundColor: brandGreen,
+                  color: "white",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                + Add Officer
+              </button>
+            </div>
           </div>
           <table
             style={{
@@ -3797,8 +3870,213 @@ function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* OFFICER BULK IMPORT MODAL */}
+      {isBulkImportOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(0, 0, 0, 0.4)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1300,
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              borderRadius: "10px",
+              width: "100%",
+              maxWidth: "500px",
+              overflow: "hidden",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              display: "flex",
+              flexDirection: "column",
+              maxHeight: "85vh",
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ padding: "20px", borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0, color: "#1e293b", fontWeight: "bold" }}>
+                Bulk Import Officers
+              </h3>
+              <button
+                onClick={() => {
+                  setIsBulkImportModalOpen(false);
+                  setBulkImportFile(null);
+                  setImportResult(null);
+                  setImportError("");
+                }}
+                style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#94a3b8" }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "15px" }}>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "14px", lineHeight: "1.5" }}>
+                Upload an Excel file (<code>.xlsx</code>) or CSV file (<code>.csv</code>) matching the roster format to create multiple officer profiles. The system will automatically generate passwords and email credentials to each officer.
+              </p>
+
+              {/* Template Download */}
+              <div style={{ backgroundColor: "#f8fafc", padding: "12px 15px", borderRadius: "6px", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <span style={{ fontWeight: "bold", fontSize: "13px", color: "#334155" }}>Standard Template</span>
+                  <div style={{ fontSize: "11px", color: "#64748b" }}>Required fields: First Name, Last Name, Rank, Email. Staff ID is optional.</div>
+                </div>
+                <button
+                  onClick={() => {
+                    const headers = ["Staff ID (Optional)", "First Name", "Last Name", "Rank", "Email"];
+                    const sample = ["OYR1024", "John", "Doe", "Inspector", "johndoe@oyrtma.gov.ng"];
+                    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), sample.join(",")].join("\n");
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement("a");
+                    link.setAttribute("href", encodedUri);
+                    link.setAttribute("download", "oyrtma_officer_template.csv");
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    backgroundColor: "#f1f5f9",
+                    color: "#334155",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Download (.CSV)
+                </button>
+              </div>
+
+              {/* Upload Input */}
+              {!importResult && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                  <label style={{ fontSize: "13px", fontWeight: "bold", color: "#475569" }}>Select Excel / CSV File</label>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setBulkImportFile(e.target.files[0]);
+                        setImportError("");
+                      }
+                    }}
+                    style={{
+                      padding: "10px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "5px",
+                      fontSize: "14px",
+                      cursor: "pointer",
+                      width: "100%",
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Error Display */}
+              {importError && (
+                <div style={{ padding: "12px 15px", backgroundColor: "#fef2f2", color: brandRed, borderRadius: "6px", fontSize: "13px", fontWeight: "bold" }}>
+                  ⚠️ {importError}
+                </div>
+              )}
+
+              {/* Progress/Success Indicator */}
+              {isImporting && (
+                <div style={{ textAlign: "center", padding: "20px 0" }}>
+                  <div style={{ display: "inline-block", border: `3px solid #f3f3f3`, borderTop: `3px solid ${brandGreen}`, borderRadius: "50%", width: "30px", height: "30px", animation: "spin 1s linear infinite" }}></div>
+                  <p style={{ margin: "10px 0 0 0", color: "#64748b", fontWeight: "bold", fontSize: "13px" }}>Processing sheet and creating profiles...</p>
+                </div>
+              )}
+
+              {/* Result Summary */}
+              {importResult && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ backgroundColor: "#e6f4ea", color: brandGreen, padding: "15px", borderRadius: "6px", border: `1px solid #cbd5e1` }}>
+                    <h4 style={{ margin: "0 0 8px 0", fontWeight: "bold" }}>Import Status: Completed</h4>
+                    <p style={{ margin: 0, fontSize: "13px" }}>{importResult.message}</p>
+                    <p style={{ margin: "5px 0 0 0", fontSize: "13px", fontWeight: "bold" }}>Officers Created: {importResult.created_count}</p>
+                    {importResult.error_count > 0 && (
+                      <p style={{ margin: "3px 0 0 0", fontSize: "13px", color: brandRed, fontWeight: "bold" }}>Rows Failed: {importResult.error_count}</p>
+                    )}
+                  </div>
+
+                  {importResult.errors && importResult.errors.length > 0 && (
+                    <div style={{ border: "1px solid #cbd5e1", borderRadius: "6px", overflow: "hidden" }}>
+                      <div style={{ backgroundColor: "#f8fafc", padding: "8px 12px", borderBottom: "1px solid #cbd5e1", fontWeight: "bold", fontSize: "12px", color: "#475569" }}>
+                        Detailed Row Failures
+                      </div>
+                      <div style={{ maxHeight: "150px", overflowY: "auto", fontSize: "12px" }}>
+                        {importResult.errors.map((err, i) => (
+                          <div key={i} style={{ padding: "8px 12px", borderBottom: i < importResult.errors.length - 1 ? "1px solid #f1f5f9" : "none", display: "flex", gap: "10px" }}>
+                            <strong style={{ color: brandRed }}>Row {err.row}:</strong>
+                            <span style={{ color: "#475569" }}>{err.error}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: "15px 20px", borderTop: "1px solid #eee", display: "flex", justifyContent: "flex-end", gap: "10px", backgroundColor: "#f8f9fa" }}>
+              <button
+                onClick={() => {
+                  setIsBulkImportModalOpen(false);
+                  setBulkImportFile(null);
+                  setImportResult(null);
+                  setImportError("");
+                }}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "#cbd5e1",
+                  color: "#334155",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                {importResult ? "Close" : "Cancel"}
+              </button>
+              {!importResult && (
+                <button
+                  onClick={handleBulkImportSubmit}
+                  disabled={!bulkImportFile || isImporting}
+                  style={{
+                    padding: "8px 16px",
+                    backgroundColor: brandGreen,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "5px",
+                    cursor: (!bulkImportFile || isImporting) ? "not-allowed" : "pointer",
+                    fontWeight: "bold",
+                    opacity: (!bulkImportFile || isImporting) ? 0.6 : 1,
+                  }}
+                >
+                  Start Import
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default AdminDashboard;
+
